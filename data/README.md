@@ -1,4 +1,4 @@
-## Setting Explanations
+# Setting Explanations
 
 This file documents all configurable settings for the FPL solver. Settings are organized by complexity:
 
@@ -31,10 +31,12 @@ These are the core settings most users will interact with. You'll find them in `
   - `"json_string"` – supply team data inline via `team_json`
 
   Using `json` or `json_string` is necessary when you have already made transfers in a gameweek and want these to be taken into account for your solve.
+- `preseason`: set to `true` for a solve with no initial squad (`team_data`/`team_id`/`team_json` are ignored). This is mostly used pre-GW1, but can also be used for teams joining the game late.
+  - Example: `"preseason": false`
 
 ### Player Pool Filtering
 - `xmin_lb`: drop players below this many expected minutes across the horizon
-  - Example: `"xmin_lb": 300` (drop players with &lt;300 expected minutes)
+  - Example: `"xmin_lb": 300` (drop players with under 300 expected minutes)
 - `ev_per_price_cutoff`: drop players below this percentile of expected value per price
   - Example: `"ev_per_price_cutoff": 30` (drop bottom 30%)
 - `keep_top_ev_percent`: force the filtering to always keep the top n% of players by total expected value, even if they would have been otherwise filtered out by other steps
@@ -143,8 +145,6 @@ These settings provide fine-grained control over the optimization. Most users wo
   - Example: `"allowed_chip_gws": {"wc": [25, 27], "fh": [30, 31]}`
 - `forced_chip_gws`: dictionary of chip types to lists of gameweeks where chip MUST be used
   - Example: `"forced_chip_gws": {"wc": [], "bb": [], "fh": [], "tc": []}`
-- `preseason`: special flag for GW1 solving where team data is not important
-  - Example: `"preseason": false`
 
 ### Lineup Constraints
 - `no_opposing_play`: controls opposing-play logic
@@ -267,7 +267,7 @@ For a complete listing of all settings and their default values, see [`comprehen
 | [`generate_binary_files`](#binary-files-advanced) | bool | ❌ |
 | [`hide_transfers`](#output--exports) | bool | ❌ |
 | [`hit_cost`](#transfer--hit-management) | int | ❌ |
-| [`hit_limit`](#transfer--hit-management) | int | ❌ |
+| [`hit_limit`](#transfer--hit-management) | int/null | ❌ |
 | [`horizon`](#planning-horizon) | int | ✅ |
 | [`itb_loss_per_transfer`](#scoring--objective-function) | float | ❌ |
 | [`itb_value`](#scoring--objective-function) | float | ❌ |
@@ -281,20 +281,20 @@ For a complete listing of all settings and their default values, see [`comprehen
 | [`max_defenders_per_team`](#lineup-constraints) | int | ❌ |
 | [`no_chip_gws`](#chip-management) | list | ❌ |
 | [`no_future_transfer`](#transfer--hit-management) | bool | ❌ |
-| [`no_gk_rotation_after`](#lineup-constraints) | int | ❌ |
+| [`no_gk_rotation_after`](#lineup-constraints) | int/null | ❌ |
 | [`no_opposing_play`](#lineup-constraints) | bool/str | ❌ |
 | [`no_transfer_by_position`](#transfer--hit-management) | list | ❌ |
 | [`no_transfer_gws`](#transfer--hit-management) | list | ❌ |
 | [`no_transfer_last_gws`](#transfer-constraints) | int | ✅ |
 | [`no_trs_except_wc`](#transfer--hit-management) | bool | ❌ |
 | [`num_iterations`](#solution-variants) | int | ❌ |
-| [`num_transfers`](#transfer--hit-management) | int | ❌ |
+| [`num_transfers`](#transfer--hit-management) | int/null | ❌ |
 | [`only_booked_transfers`](#transfer--hit-management) | bool | ❌ |
 | [`opposing_play_group`](#lineup-constraints) | string | ❌ |
 | [`opposing_play_penalty`](#lineup-constraints) | float | ❌ |
-| [`override_next_gw`](#team-data-options) | int | ❌ |
+| [`override_next_gw`](#team-data-options) | int/null | ❌ |
 | [`pick_prices`](#player-management-advanced) | dict | ❌ |
-| [`preseason`](#chip-management) | bool | ❌ |
+| [`preseason`](#data-source--team) | bool | ✅ |
 | [`price_changes`](#player-management-advanced) | list | ❌ |
 | [`print_decay_metrics`](#output--exports) | bool | ❌ |
 | [`print_result_table`](#output--exports) | bool | ❌ |
