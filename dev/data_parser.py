@@ -154,7 +154,7 @@ def read_mixed(options, weights):
         )
 
     final_data = pd.concat([final_data, pd.DataFrame(missing_players)]).fillna(0)
-    final_data.to_csv(DATA_DIR / "mixed.csv", index=False, encoding="utf-8", float_format="%.2f")
+    final_data.to_csv(DATA_DIR / options.get("export_data", "mixed.csv"), index=False, encoding="utf-8", float_format="%.2f")
 
     return final_data
 
