@@ -304,6 +304,7 @@ For a complete listing of all settings and their default values, see [`comprehen
 | [`randomization_strength`](#randomization) | float | ❌ |
 | [`randomized`](#randomization) | bool | ❌ |
 | [`report_decay_base`](#data-sources) | list | ❌ |
+| [`save_squads`](#output--exports) | bool | ❌ |
 | [`secs`](#solver-behavior) | int | ❌ |
 | [`single_solve`](#solver-behavior) | bool | ❌ |
 | [`solver`](#solver-behavior) | string | ❌ |
@@ -320,4 +321,5 @@ For a complete listing of all settings and their default values, see [`comprehen
 | [`use_wc`](#chips) | list | ✅ |
 | [`vcap_weight`](#scoring--objective-function) | float | ❌ |
 | [`verbose`](#output) | bool | ✅ |
+| [`weekly_hit_limit`](#transfer--hit-management) | int | ❌ |
 | [`xmin_lb`](#player-pool-filtering) | int | ✅ |
