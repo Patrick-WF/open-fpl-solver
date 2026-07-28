@@ -119,7 +119,7 @@ These settings provide fine-grained control over the optimization. Most users wo
   - Example: `"banned_next_gw": [100, [200, 32]]` bans player ID 100 next GW, and player ID 200 for GW32 only
 - `locked_next_gw`: list of player IDs to force into next gameweek's squad (supports per-GW like `banned_next_gw`)
   - Example: `"locked_next_gw": []`
-- `keep`: list of player IDs that will not be kept throughout the player filtering process, even if they would otherwise be filtered out.
+- `keep`: list of player IDs that will always be kept throughout the player filtering process, even if they would otherwise be filtered out.
   - Example: `"keep": []`
 - `price_changes`: list of `[player_ID, price_change]` pairs to simulate price changes (in £0.1m increments)
   - Example: `"price_changes": [[311, 1], [351, -1]]` simulates player 311 up £0.1m, player 351 down £0.1m
