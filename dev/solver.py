@@ -222,7 +222,7 @@ def prep_data(my_data, options):
     ft = max(ft, 0)
 
     # If wildcard is active, then you have: "status_for_entry": "active" under my_data['chips']
-    # can only pass the check when using "team_data": "json"
+    # can only pass the check when using "team_data": "json" or "json_string"
     for c in my_data["chips"]:
         if c["name"] == "wildcard" and c.get("status_for_entry", "") == "active":
             options["use_wc"] = [gw]

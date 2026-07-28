@@ -114,30 +114,30 @@ def solve_regular(runtime_options=None):
 
     if options.get("preseason"):
         my_data = {"picks": [], "chips": [], "transfers": {"limit": None, "cost": 4, "bank": 1000, "value": 0}}
-    elif options.get("team_data", "json").lower() == "id":
-        team_id = options.get("team_id", None)
-        if team_id is None:
-            print("You must supply your team_id in data/user_settings.json")
-            sys.exit(0)
-        my_data = generate_team_json(team_id, options)
-    elif options.get("team_json"):
-        my_data = json.loads(options["team_json"])
     else:
-        try:
-            with open(DATA_DIR / "team.json") as f:
+        team_data_mode = options.get("team_data")
+        if team_data_mode == "id":
+            team_id = options.get("team_id", None)
+            if team_id is None:
+                raise ValueError('"team_id" must be supplied in data/user_settings.json when "team_data" is "id"')
+            my_data = generate_team_json(team_id, options)
+        elif team_data_mode == "json":
+            team_json_path = DATA_DIR / "team.json"
+            if not team_json_path.exists():
+                raise FileNotFoundError(
+                    f'"team_data" is "json" but {team_json_path} does not exist. '
+                    "Download your team data from https://fantasy.premierleague.com/api/my-team/YOUR-TEAM-ID/ "
+                    "and save it there."
+                )
+            with open(team_json_path) as f:
                 my_data = json.load(f)
-        except FileNotFoundError:
-            msg = """
-            team.json file not found in the data folder.
-
-            You must either:
-                1. Download your team data from https://fantasy.premierleague.com/api/my-team/YOUR-TEAM-ID/ and either
-                    a) save it inside the data folder with the filename 'team.json' or
-                    b) supply it to the "team_json" option in user_settings.json
-                2. Set "team_data" in user_settings to "ID", and set the "team_id" value to your team's ID
-            """
-            print(textwrap.dedent(msg))
-            sys.exit(0)
+        elif team_data_mode == "json_string":
+            team_json = options.get("team_json")
+            if not team_json:
+                raise ValueError('"team_json" must be set (in data/user_settings.json or as --team_json) when "team_data" is "json_string"')
+            my_data = json.loads(team_json)
+        else:
+            raise ValueError(f'"team_data" must be one of "id", "json", or "json_string", got {team_data_mode!r}')
 
     if price_changes := options.get("price_changes", []):
         my_squad_ids = [x["element"] for x in my_data["picks"]]

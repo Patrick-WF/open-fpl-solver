@@ -24,11 +24,13 @@ These are the core settings most users will interact with. You'll find them in `
 
 ### Data Source & Team
 - `datasource`: specifies which projection CSV to use or `"mixed"` for multiple sources
-  - Example: `"datasource": "fplreview"` or `"solio"`
-- `team_data`: how to provide team data (`"id"` for team_id, `"json"` for inline JSON, or default uses `team.json`)
-  - Example: `"team_data": "id"`
-- `team_id`: your FPL team ID (requires `team_data: "id"`)
-  - Example: `"team_id": 2211381`
+  - Example: `"datasource": "solio"` if your projections file is called `solio.csv`
+- `team_data`: how to supply your team data. Must be one of:
+  - `"id"` – look up your team via the `team_id` you supply
+  - `"json"` – read team data from a `data/team.json` file (see [getting_team_json.md](getting_team_json.md) for how to get one).
+  - `"json_string"` – supply team data inline via `team_json`
+
+  Using `json` or `json_string` is necessary when you have already made transfers in a gameweek and want these to be taken into account for your solve.
 
 ### Player Pool Filtering
 - `xmin_lb`: drop players below this many expected minutes across the horizon
@@ -183,7 +185,7 @@ These settings provide fine-grained control over the optimization. Most users wo
   - Example: `"report_decay_base": [0.85, 1.0, 1.017]`
 
 ### Team Data Options
-- `team_json`: supply team JSON inline (requires `"team_data": "json"`)
+- `team_json`: supply team JSON inline (requires `"team_data": "json_string"`)
   - Can be run as: `uv run python solve.py --team_json '{"picks": [{...}]}'`
   - Example: `"team_json": null`
 - `override_next_gw`: override the starting gameweek for planning horizon
