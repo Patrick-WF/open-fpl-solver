@@ -228,10 +228,7 @@ These settings provide fine-grained control over the optimization. Most users wo
   - Example: `"solutions_file_player_type": "name"`
 
 ### Binary Files (Advanced)
-- `binary_file_weights`: configure binary file names and weights
-  - Example: `"binary_file_weights": {"binary_1.csv": 0.6, "binary_2.csv": 0.3, "binary_3.csv": 0.1}`
-- `generate_binary_files`: if `true`, generate binary files based on fixture settings
-  - Example: `"generate_binary_files": false`
+Used with `simulations.py` to model fixture uncertainty (e.g. postponed/rearranged fixtures). Covers `binary_file_weights`, `generate_binary_files`, and `binary_fixture_settings` — see [binary_fixtures.md](binary_fixtures.md) for full setup instructions and examples.
 
 ---
 
@@ -245,6 +242,7 @@ For a complete listing of all settings and their default values, see [`comprehen
 | [`banned_next_gw`](#player-management-advanced) | list | ❌ |
 | [`bench_weights`](#scoring--objective-function) | dict | ❌ |
 | [`binary_file_weights`](#binary-files-advanced) | dict | ❌ |
+| [`binary_fixture_settings`](#binary-files-advanced) | dict | ❌ |
 | [`booked_transfers`](#transfer--hit-management) | list | ❌ |
 | [`chip_limits`](#chip-management) | dict | ❌ |
 | [`data_weights`](#data-sources) | dict | ❌ |
