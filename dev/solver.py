@@ -24,7 +24,6 @@ SQUAD_SIZE = 15
 LINEUP_SIZE = 11
 MAX_GAMEWEEK = 38
 MAX_PLAYERS_PER_TEAM = 3
-AFCON_GW = 16
 
 
 def generate_team_json(team_id, options):
@@ -89,9 +88,6 @@ def calculate_fts(transfers, first_gw, next_gw, fh_gws, wc_gws):
     fts = dict.fromkeys(range(first_gw + 1, next_gw + 1), 0)
     fts[first_gw + 1] = 1
     for i in range(first_gw + 2, next_gw + 1):
-        if i == AFCON_GW:
-            fts[i] = 5
-            continue
         if (i - 1) in fh_gws:
             fts[i] = fts[i - 1]
             continue
@@ -473,11 +469,8 @@ def solve_multi_period_fpl(data, options):
     model.add_constraints((transfer_out[p, w] <= 1 - use_fh[w] for p in players for w in gws), name="no_tr_out_fh")
 
     ## Free transfer constraints
-    # 2024-2025 variation: min 1 / max 5 / roll over WC & FH
-    # raw_gw_ft = {w: fts[w] - transfer_count[w] + 1 - use_wc[w] - use_fh[w] for w in gws}
-
-    # 2056-26 afcon variation: always have 5 ft in gw16 no matter what
-    raw_gw_ft = {w: fts[w] - transfer_count[w] + (5 if w == AFCON_GW - 1 else 1) - use_wc[w] - use_fh[w] for w in gws}
+    # min 1 / max 5 / roll over WC & FH
+    raw_gw_ft = {w: fts[w] - transfer_count[w] + 1 - use_wc[w] - use_fh[w] for w in gws}
     m = 20  # big m for bounding constraints, picked 20 because nobody will ever get to 20 ft in a solve
 
     # FT_BELOW_LB AND FT_ABOVE_UB LOGIC
