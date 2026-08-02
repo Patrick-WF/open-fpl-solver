@@ -1,4 +1,5 @@
 import os
+import shlex
 import subprocess
 import threading
 import time
@@ -911,7 +912,6 @@ def solve_multi_period_fpl(data, options):
             with open("debug.sas", "w") as file:
                 file.write(model.to_optmodel())
 
-        # use_cmd = options.get("use_cmd", False)
         solver = options.get("solver", "highs")
 
         if solver.lower() == "highs":
@@ -938,30 +938,25 @@ def solve_multi_period_fpl(data, options):
                 v.set_value(values[idx])
 
         elif solver == "gurobi":
-            use_cmd = options.get("use_cmd", False)
             gap = options.get("gap", 0)
             sol_file_name = sol_file_name.replace("_sol", "").replace("txt", "sol")
             command = f"gurobi_cl MIPGap={gap} ResultFile={sol_file_name} {mps_file_name}"
 
-            if use_cmd:
-                os.system(command)
-            else:
+            def print_output(process):
+                while True:
+                    output = process.stdout.readline()
+                    if "Solving report" in output:
+                        time.sleep(2)
+                        process.kill()
+                    elif output == "" and process.poll() is not None:
+                        break
+                    elif output:
+                        print(output.strip())
 
-                def print_output(process):
-                    while True:
-                        output = process.stdout.readline()
-                        if "Solving report" in output:
-                            time.sleep(2)
-                            process.kill()
-                        elif output == "" and process.poll() is not None:
-                            break
-                        elif output:
-                            print(output.strip())
-
-                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-                output_thread = threading.Thread(target=print_output, args=(process,))
-                output_thread.start()
-                output_thread.join()
+            process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            output_thread = threading.Thread(target=print_output, args=(process,))
+            output_thread.start()
+            output_thread.join()
 
             # Parsing
             with open(sol_file_name) as f:
