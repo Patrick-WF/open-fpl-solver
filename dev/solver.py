@@ -363,12 +363,13 @@ def solve_multi_period_fpl(data, options):
     use_tc = model.add_variables(players, gws, name="use_tc", vartype=so.binary)
 
     # Dictionaries
-    lineup_type_count = {(t, w): so.expr_sum(lineup[p, w] for p in players if merged_data.loc[p, "element_type"] == t) for t in el_types for w in gws}
-    squad_type_count = {(t, w): so.expr_sum(squad[p, w] for p in players if merged_data.loc[p, "element_type"] == t) for t in el_types for w in gws}
-    squad_fh_type_count = {
-        (t, w): so.expr_sum(squad_fh[p, w] for p in players if merged_data.loc[p, "element_type"] == t) for t in el_types for w in gws
-    }
     player_type = merged_data["element_type"].to_dict()
+    player_pos = merged_data["Pos"].to_dict()
+    lineup_type_count = {(t, w): so.expr_sum(lineup[p, w] for p in players if player_type[p] == t) for t in el_types for w in gws}
+    squad_type_count = {(t, w): so.expr_sum(squad[p, w] for p in players if player_type[p] == t) for t in el_types for w in gws}
+    squad_fh_type_count = {
+        (t, w): so.expr_sum(squad_fh[p, w] for p in players if player_type[p] == t) for t in el_types for w in gws
+    }
     # player_price = (merged_data['now_cost'] / 10).to_dict()
     sell_price = data["sell_price"]
     buy_price = data["buy_price"]
@@ -381,9 +382,11 @@ def solve_multi_period_fpl(data, options):
     }
     fh_sell_price = {p: sell_price[p] if p in price_modified_players else buy_price[p] for p in players}
     bought_amount = {w: so.expr_sum(buy_price[p] * transfer_in[p, w] for p in players) for w in gws}
-    points_player_week = {(p, w): merged_data.loc[p, f"{w}_Pts"] for p in players for w in gws}
-    minutes_player_week = {(p, w): merged_data.loc[p, f"{w}_xMins"] for p in players for w in gws}
-    player_team = {p: merged_data.loc[p, "name"] for p in players}
+    pts_by_week = {w: merged_data[f"{w}_Pts"].to_dict() for w in gws}
+    xmins_by_week = {w: merged_data[f"{w}_xMins"].to_dict() for w in gws}
+    points_player_week = {(p, w): pts_by_week[w][p] for p in players for w in gws}
+    minutes_player_week = {(p, w): xmins_by_week[w][p] for p in players for w in gws}
+    player_team = merged_data["name"].to_dict()
     squad_count = {w: so.expr_sum(squad[p, w] for p in players) for w in gws}
     squad_fh_count = {w: so.expr_sum(squad_fh[p, w] for p in players) for w in gws}
     num_transfers = {w: so.expr_sum(transfer_out[p, w] for p in players) for w in gws}
@@ -667,7 +670,7 @@ def solve_multi_period_fpl(data, options):
                     for p in players
                     for w in gws
                     if w > 1
-                    if merged_data.loc[p, "Pos"] in options["no_transfer_by_position"]
+                    if player_pos[p] in options["no_transfer_by_position"]
                 ),
                 name="no_tr_by_pos",
             )
@@ -676,7 +679,7 @@ def solve_multi_period_fpl(data, options):
     if max_defs_per_team < MAX_PLAYERS_PER_TEAM:  # only add constraints if necessary
         model.add_constraints(
             (
-                so.expr_sum(squad[p, w] for p in players if player_team[p] == t and merged_data.loc[p, "Pos"] in {"G", "D"}) <= max_defs_per_team
+                so.expr_sum(squad[p, w] for p in players if player_team[p] == t and player_pos[p] in {"G", "D"}) <= max_defs_per_team
                 for t in teams
                 for w in gws
             ),
@@ -684,7 +687,7 @@ def solve_multi_period_fpl(data, options):
         )
         model.add_constraints(
             (
-                so.expr_sum(squad_fh[p, w] for p in players if player_team[p] == t and merged_data.loc[p, "Pos"] in {"G", "D"})
+                so.expr_sum(squad_fh[p, w] for p in players if player_team[p] == t and player_pos[p] in {"G", "D"})
                 <= max_defs_per_team * use_fh[w]
                 for t in teams
                 for w in gws
@@ -796,7 +799,7 @@ def solve_multi_period_fpl(data, options):
             con_iter = 0
             for key, count in value_dict.items():
                 target_players = [
-                    p for p in players if merged_data.loc[p, "Pos"] == pos and buy_price[p] >= key - buffer and buy_price[p] <= key + buffer
+                    p for p in players if player_pos[p] == pos and buy_price[p] >= key - buffer and buy_price[p] <= key + buffer
                 ]
                 model.add_constraints((so.expr_sum(squad[p, w] for p in target_players) >= count for w in gws), name=f"price_point_{pos}_{con_iter}")
                 con_iter += 1
