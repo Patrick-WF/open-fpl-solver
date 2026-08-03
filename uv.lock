@@ -138,12 +138,13 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "python-levenshtein" },
-    { name = "sasoptpy" },
+    { name = "requests" },
     { name = "tabulate" },
 ]
 
 [package.optional-dependencies]
 dev = [
+    { name = "pandas-stubs" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -155,10 +156,11 @@ requires-dist = [
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pandas-stubs", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "python-levenshtein" },
+    { name = "requests" },
     { name = "ruff", marker = "extra == 'dev'" },
-    { name = "sasoptpy", specifier = ">=1.0.5a0" },
     { name = "tabulate", specifier = ">=0.9.0" },
 ]
 provides-extras = ["dev"]
@@ -383,6 +385,18 @@ wheels = [
 ]
 
 [[package]]
+name = "pandas-stubs"
+version = "3.0.5.260730"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c2/d2/dea4a3a56b7b5f69c5fbca9f14625fcf28e1a39a657e9833d4a10bcac593/pandas_stubs-3.0.5.260730.tar.gz", hash = "sha256:f70a232c57d93a5a2c81f8a53953e10891a5374bc92652277deb325e2e4d0ff3", size = 114631, upload-time = "2026-07-30T14:31:42.271Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/60/c2/959caec5c46f484b5f8bb6def4b0cf7a45ba6acda26f12b75142d98cc5ae/pandas_stubs-3.0.5.260730-py3-none-any.whl", hash = "sha256:60e90e3e1eda6937e337e243cbe6217e151c11137cd7eddf832af537c7310bfd", size = 174807, upload-time = "2026-07-30T14:31:41.17Z" },
+]
+
+[[package]]
 name = "pillow"
 version = "12.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -500,15 +514,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pytz"
-version = "2026.3.post1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/fb/48/fb042503b6ca6cd271261dc559fd6432f7d8c713153e9ec5c591af4dfc1c/pytz-2026.3.post1.tar.gz", hash = "sha256:2211d3fcf9a797d3405cac96ac7f61d80e6a644f72a3309607282fe8a2010c5d", size = 319745, upload-time = "2026-07-25T15:12:07.385Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0f/7b/39c34ca613b0b198cb866466651b26b045e2009864c5183c979a3b83f383/pytz-2026.3.post1-py2.py3-none-any.whl", hash = "sha256:dd95840dd199baea12d9cc096a1d452caa6596a1c1e4b5f3dbd1541855d5e815", size = 508283, upload-time = "2026-07-25T15:12:05.782Z" },
-]
-
-[[package]]
 name = "rapidfuzz"
 version = "3.14.5"
 source = { registry = "https://pypi.org/simple" }
@@ -579,54 +584,12 @@ wheels = [
 ]
 
 [[package]]
-name = "sasoptpy"
-version = "1.0.5"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "saspy" },
-    { name = "swat" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f1/b1/6dacc7272bcdf52406019aa3743c189b90a430294c3239c52821bb1e1aaa/sasoptpy-1.0.5.tar.gz", hash = "sha256:2fc7b45f078d7832759a746c68d71794ae31146806ea5d046c646b7eb4f90e5e", size = 141030, upload-time = "2022-03-01T19:07:16.207Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/cd/5d/3b0191a69b8f11feead6a7b273941a74f12427e825cb33786a9b83590718/sasoptpy-1.0.5-py3-none-any.whl", hash = "sha256:f61aae89b4b3a8d6eaea405e2f3544bfaff67b2d88031925dc4755a7a44280e2", size = 103904, upload-time = "2022-03-01T19:07:15.015Z" },
-]
-
-[[package]]
-name = "saspy"
-version = "5.108.6"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/bf/69/37a609a83bbb8a86ebcb675b1c0592db94bdcefd51434bac6211b09d4153/saspy-5.108.6.tar.gz", hash = "sha256:9e949888f66d8227e27e53e1e5ddb4f65d434e2e3cbc04a2d38609d73a3af349", size = 7106184, upload-time = "2026-07-23T20:30:25.705Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/0b/4c6e8746d40f80df00ea8cfc7dda6c56790184d2d5fb5cd2e78d4a998b43/saspy-5.108.6-py3-none-any.whl", hash = "sha256:f57787331c5b4b5c754de10f6a92eace7f7bc20a1b513e09eb8bd1a25dd347d6", size = 7120218, upload-time = "2026-07-23T20:30:23.492Z" },
-]
-
-[[package]]
 name = "six"
 version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
-]
-
-[[package]]
-name = "swat"
-version = "1.18.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pandas" },
-    { name = "pytz" },
-    { name = "requests" },
-    { name = "six" },
-    { name = "urllib3" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/aa/f8/30d02d45a6de559bbc1d7bcb2f33b19697176bfb46b720f2e5adfd435096/swat-1.18.1-0-cp314-cp314-macosx_10_9_x86_64.whl", hash = "sha256:149a96343a27a4337ac477fca083ea5fd61c54020830687f193943d7eae8c637", size = 467853, upload-time = "2026-06-30T09:26:52.713Z" },
-    { url = "https://files.pythonhosted.org/packages/60/39/48afbeaa2ba6912fe01f83d3ad2e362dffad6400454d0afcbd75ce153061/swat-1.18.1-0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:a75b895a30704ec2ae1f75e9b15be4dc42ef2f3d5295b3b066dd811436356685", size = 467852, upload-time = "2026-06-30T09:26:54.067Z" },
-    { url = "https://files.pythonhosted.org/packages/1a/df/333013b1986a3bc1381b1761a1725fef1d29ad3580b08752bb53c2b36cd2/swat-1.18.1-0-cp314-cp314-manylinux1_x86_64.whl", hash = "sha256:847b344e8fe2872aadf4c2b9d1a2dd766df3a6aac58649656562d4600a1849fb", size = 46778463, upload-time = "2026-06-30T09:26:55.94Z" },
-    { url = "https://files.pythonhosted.org/packages/2d/db/115d08815faea792d31552ca71ade7add66e978f569f39e1f0b5ab6f798a/swat-1.18.1-0-cp314-cp314-win_amd64.whl", hash = "sha256:be0ddb9ebd7ea32fe01211ddb0d4eca79849597b0b07b7517acb7f4ba6a9bfe9", size = 61537814, upload-time = "2026-06-30T09:26:59.369Z" },
 ]
 
 [[package]]
