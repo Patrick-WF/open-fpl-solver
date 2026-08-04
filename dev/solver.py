@@ -610,7 +610,7 @@ def solve_multi_period_fpl(data, options):
 
     if options.get("no_future_transfer", None):
         print("OC - No Future Tr")
-        m.addConstr(sum_(transfer_in[p, w] for p in players for w in gws if w > next_gw and w != options.get("use_wc")) == 0)
+        m.addConstr(sum_(transfer_in[p, w] for p in players for w in gws if w > next_gw and w not in options.get("use_wc")) == 0)
 
     if options.get("no_transfer_last_gws", None):
         print("OC - No TR last GWs")
@@ -773,7 +773,7 @@ def solve_multi_period_fpl(data, options):
     if len(options.get("no_chip_gws", [])) > 0:
         print("OC - No Chip GWs")
         no_chip_gws = options["no_chip_gws"]
-        m.addConstr(sum_(use_bb[w] + use_wc[w] + use_fh[w] for w in no_chip_gws) == 0)
+        m.addConstr(sum_(use_bb[w] + use_wc[w] + use_fh[w] + use_tc_gw[w] for w in no_chip_gws) == 0)
 
     if options.get("only_booked_transfers") is True:
         print("OC - Only Booked Transfers")
