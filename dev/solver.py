@@ -132,6 +132,9 @@ def prep_data(my_data, options):
     element_to_team = {x["id"]: x["team"] for x in fpl_data["elements"]}  # dict mapping element to team id
     max_players_from_team = Counter([element_to_team[x["element"]] for x in my_data["picks"]]).most_common(1)[0][1] if my_data["picks"] else 3
     data = read_data(options)
+    # Sources disagree on position codes (review uses GKP/DEF/MID/FWD, solio uses G/D/M/F).
+    # Everything downstream expects the single-letter form.
+    data["Pos"] = data["Pos"].replace({"GKP": "G", "GK": "G", "DEF": "D", "MID": "M", "FWD": "F"})
 
     merged_data = pd.merge(elements_team, data, left_on="id_x", right_on="ID")
     merged_data.set_index(["id_x"], inplace=True)
