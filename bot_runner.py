@@ -132,11 +132,9 @@ try:
     squad_df = pd.DataFrame(squad)
     
     # 2. Select Optimal Starting XI from the 15-player squad
-    # Rules: 1 GK, 3-5 DEF, 3-5 MID, 1-3 FWD (Total 11 players)
     starting_xi = []
     bench = []
     
-    # Pick best GK for Starting XI
     gks_in_squad = squad_df[squad_df["Pos"] == "G"].sort_values(by="xP", ascending=False)
     starting_xi.append(gks_in_squad.iloc[0])
     bench.append(gks_in_squad.iloc[1])
@@ -177,15 +175,23 @@ try:
     xi_df = pd.DataFrame(starting_xi)
     total_xi_xp = xi_df["xP"].sum()
     
-    # Captain & Vice-Captain from Starting XI
     sorted_xi = xi_df.sort_values(by="xP", ascending=False).reset_index(drop=True)
     captain = sorted_xi.iloc[0]
     vice_captain = sorted_xi.iloc[1]
     
+    # Chip strategy incorporating Free Hit & Wildcard awareness
+    bench_xp = sum([b['xP'] for b in bench])
+    chip_advice = "Hold Chips 🛡️ (Save Free Hit / Wildcards)"
+    if captain['xP'] >= 11.5:
+        chip_advice = "Triple Captain Recommended 🚀 (High Elite Ceiling)"
+    elif bench_xp >= 22.0:
+        chip_advice = "Bench Boost Recommended 📈 (Strong Bench Output)"
+        
     # Format Telegram Message
     message = "🏆 *FPL Live Optimized Starting XI & Squad*\n\n"
     message += f"⭐ *Captain:* {captain['Name']} ({captain['xP']:.1f} xP)\n"
     message += f"🤝 *Vice-Captain:* {vice_captain['Name']} ({vice_captain['xP']:.1f} xP)\n"
+    message += f"🎯 *Chip Strategy:* {chip_advice}\n"
     message += f"💰 *Squad Cost:* £{total_cost:.1f}m | *Starting XI xP:* {total_xi_xp:.1f}\n\n"
     
     message += "⚽ *Starting XI*\n"
