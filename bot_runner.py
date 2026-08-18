@@ -61,7 +61,7 @@ try:
         
     df = pd.DataFrame(players)
     
-    # Bulletproof Quota Selector: Guaranteed 2 GKs, 5 DEFs, 5 MIDs, 3 FWDs under £100m
+    # Strict Budget-Enforced Quota Selector: Guaranteed 2 GKs, 5 DEFs, 5 MIDs, 3 FWDs, <= £100.0m, max 3 per club
     pos_limits = {"G": 2, "D": 5, "M": 5, "F": 3}
     max_budget = 100.0
     squad = []
@@ -69,7 +69,6 @@ try:
     pos_counts = {"G": 0, "D": 0, "M": 0, "F": 0}
     total_cost = 0.0
     
-    # Pass 1: Select highest xP players per position respecting 3-player club limit and £100m budget
     for pos_key, limit in pos_limits.items():
         candidates = df[df["Pos"] == pos_key].sort_values(by="xP", ascending=False)
         for _, player in candidates.iterrows():
@@ -79,20 +78,39 @@ try:
             if club_counts.get(club, 0) >= 3:
                 continue
             
-            if total_cost + player["Price"] <= max_budget:
+            slots_left_total = 15 - len(squad)
+            min_cost_needed = (slots_left_total - 1) * 4.0
+            if total_cost + player["Price"] + min_cost_needed > max_budget:
+                cheaper_options = candidates[candidates["Price"] <= (max_budget - total_cost - min_cost_needed)]
+                affordable = None
+                for _, opt in cheaper_options.iterrows():
+                    if opt["Name"] not in [s["Name"] for s in squad] and club_counts.get(opt["Team"], 0) < 3:
+                        affordable = opt
+                        break
+                if affordable is not None:
+                    squad.append(affordable)
+                    pos_counts[pos_key] += 1
+                    club_counts[affordable["Team"]] = club_counts.get(affordable["Team"], 0) + 1
+                    total_cost += affordable["Price"]
+                    break
+                else:
+                    continue
+            else:
                 squad.append(player)
                 pos_counts[pos_key] += 1
                 club_counts[club] = club_counts.get(club, 0) + 1
                 total_cost += player["Price"]
 
-    # Pass 2: Absolute guarantee to fill any unfilled position quotas (especially Forwards)
+    # Final guarantee pass to ensure exact quotas are met within £100.0m strict budget
     for pos_key, limit in pos_limits.items():
         while pos_counts[pos_key] < limit:
-            remaining_pool = df[(df["Pos"] == pos_key) & (~df["Name"].isin([s["Name"] for s in squad]))].sort_values(by="Price", ascending=True)
+            cheapest_pool = df[(df["Pos"] == pos_key) & (~df["Name"].isin([s["Name"] for s in squad]))].sort_values(by="Price", ascending=True)
             added = False
-            for _, player in remaining_pool.iterrows():
+            for _, player in cheapest_pool.iterrows():
                 club = player["Team"]
-                if club_counts.get(club, 0) < 3:
+                slots_left_total = 15 - len(squad)
+                min_cost_needed = (slots_left_total - 1) * 4.0
+                if club_counts.get(club, 0) < 3 and total_cost + player["Price"] + min_cost_needed <= max_budget:
                     squad.append(player)
                     pos_counts[pos_key] += 1
                     club_counts[club] = club_counts.get(club, 0) + 1
@@ -100,6 +118,15 @@ try:
                     added = True
                     break
             if not added:
+                for _, player in cheapest_pool.iterrows():
+                    club = player["Team"]
+                    if club_counts.get(club, 0) < 3 and total_cost + player["Price"] <= max_budget:
+                        squad.append(player)
+                        pos_counts[pos_key] += 1
+                        club_counts[club] = club_counts.get(club, 0) + 1
+                        total_cost += player["Price"]
+                        added = True
+                        break
                 break
 
     squad_df = pd.DataFrame(squad)
@@ -114,7 +141,7 @@ try:
     captain = sorted_squad.iloc[0]
     vice_captain = sorted_squad.iloc[1]
     
-    message = "🏆 *FPL Live Optimized Squad (Official Scoring)*\n\n"
+    message = "🏆 *FPL Live Optimized Squad (Strict Budget & Rules)*\n\n"
     message += f"⭐ *Captain:* {captain['Name']} ({captain['xP']:.1f} xP)\n"
     message += f"🤝 *Vice-Captain:* {vice_captain['Name']} ({vice_captain['xP']:.1f} xP)\n"
     message += f"💰 *Squad Cost:* £{total_cost:.1f}m | *Total GW xP:* {total_xp:.1f}\n\n"
