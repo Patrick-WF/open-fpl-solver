@@ -29,22 +29,30 @@ try:
         pos = pos_map.get(p["element_type"], "M")
         form = float(p.get("form", 0) or 0)
         ppg = float(p.get("points_per_game", 0) or 0)
+        total_pts = float(p.get("total_points", 0) or 0)
         price = p.get("now_cost", 50) / 10.0
         
-        # Incorporating official FPL scoring weights (Appearance + Form + PPG scaling)
-        base_app = 2.0  # 60+ minutes appearance points
-        form_weight = form * 0.5
-        ppg_weight = ppg * 0.4
+        # Realistic Single-Gameweek xP using official scoring weights + form scaling
+        # Appearance (2) + Goals/Assists/Clean sheet weighting via form & PPG ceilings
+        base_xp = 2.0
+        if pos == "G":
+            base_xp += (ppg * 0.9) + (form * 0.4)
+        elif pos == "D":
+            base_xp += 4.0 if ppg > 4 else 2.5  # Clean sheet probability weight
+            base_xp += (form * 0.6) + (ppg * 0.5)
+        elif pos == "M":
+            base_xp += 1.0  # Midfielder clean sheet / goal weighting
+            base_xp += (form * 0.8) + (ppg * 0.7)
+        elif pos == "F":
+            base_xp += (form * 1.0) + (ppg * 0.9)
+            
+        gw_xp = max(2.0, round(base_xp, 1))
         
-        gw_xp = max(2.0, round(base_app + form_weight + ppg_weight, 1))
-        
-        # Position-specific ceiling adjustments reflecting official points returns
-        if pos == "G": gw_xp = max(2.5, round(ppg if ppg > 0 else 3.5, 1))
-        elif pos == "D": gw_xp = max(2.0, round((form * 0.3) + 2.2, 1))
-        elif pos == "M": gw_xp = max(2.5, round((form * 0.5) + 2.5, 1))
-        elif pos == "F": gw_xp = max(3.0, round((form * 0.6) + 3.0, 1))
-        
-        gw_xp = min(gw_xp, 9.8) # Realistic single-GW ceiling
+        # Give proper elite scaling for premium assets (Haaland, Salah, etc.)
+        if price >= 10.0:
+            gw_xp = max(gw_xp, 7.5 + (price - 10.0) * 0.6)
+            
+        gw_xp = min(gw_xp, 14.5) # Realistic single-GW ceiling
 
         players.append({
             "Name": f"{p['first_name']} {p['second_name']}",
@@ -56,30 +64,56 @@ try:
         
     df = pd.DataFrame(players)
     
-    # Strict position-quota greedy selection ensuring 2 GKs, 5 DEFs, 5 MIDs, 3 FWDs
-    pos_limits = {"G": 2, "D": 5, "M": 5, "F": 3}
-    max_budget = 100.0
+    # Premium-first selection algorithm maximizing total xP while utilizing up to £100m budget
+    df_sorted = df.sort_values(by="xP", ascending=False)
+    
     squad = []
     club_counts = {}
     pos_counts = {"G": 0, "D": 0, "M": 0, "F": 0}
+    pos_limits = {"G": 2, "D": 5, "M": 5, "F": 3}
+    max_budget = 100.0
     total_cost = 0.0
     
-    for pos_key in ["G", "D", "M", "F"]:
-        pos_candidates = df[df["Pos"] == pos_key].sort_values(by="xP", ascending=False)
-        for _, player in pos_candidates.iterrows():
-            if pos_counts[pos_key] >= pos_limits[pos_key]:
-                break
-            club = player["Team"]
-            if club_counts.get(club, 0) >= 3:
-                continue
-            if total_cost + player["Price"] > max_budget:
-                continue
-                
-            squad.append(player)
-            pos_counts[pos_key] += 1
-            club_counts[club] = club_counts.get(club, 0) + 1
-            total_cost += player["Price"]
+    # Pass 1: Grab top elites across positions while respecting club limits and budget headroom
+    for _, player in df_sorted.iterrows():
+        pos = player["Pos"]
+        club = player["Team"]
+        price = player["Price"]
+        
+        if pos_counts[pos] >= pos_limits[pos]: continue
+        if club_counts.get(club, 0) >= 3: continue
+        
+        # Check if adding this player leaves enough room for remaining slots (£4.0m minimum per remaining slot)
+        slots_remaining = 15 - len(squad)
+        min_needed_budget = (slots_remaining - 1) * 4.0
+        if total_cost + price + min_needed_budget > max_budget:
+            continue
             
+        squad.append(player)
+        pos_counts[pos] += 1
+        club_counts[club] = club_counts.get(club, 0) + 1
+        total_cost += price
+        
+        if len(squad) == 15: break
+        
+    # Pass 2: Fill any unfilled slots with cheap enablers if budget allows
+    if len(squad) < 15:
+        for pos_key, limit in pos_limits.items():
+            while pos_counts[pos_key] < limit:
+                cheap_pool = df[(df["Pos"] == pos_key) & (~df["Name"].isin([s["Name"] for s in squad]))].sort_values(by="Price", ascending=True)
+                added = False
+                for _, player in cheap_pool.iterrows():
+                    club = player["Team"]
+                    if club_counts.get(club, 0) < 3 and total_cost + player["Price"] <= max_budget:
+                        squad.append(player)
+                        pos_counts[pos_key] += 1
+                        club_counts[club] = club_counts.get(club, 0) + 1
+                        total_cost += player["Price"]
+                        added = True
+                        break
+                if not added:
+                    break
+
     squad_df = pd.DataFrame(squad)
     total_xp = squad_df["xP"].sum()
     
@@ -92,7 +126,7 @@ try:
     captain = sorted_squad.iloc[0]
     vice_captain = sorted_squad.iloc[1]
     
-    message = "🏆 *FPL Live Optimized Squad (Official Scoring GW xP)*\n\n"
+    message = "🏆 *FPL Live Optimized Squad (Official Scoring)*\n\n"
     message += f"⭐ *Captain:* {captain['Name']} ({captain['xP']:.1f} xP)\n"
     message += f"🤝 *Vice-Captain:* {vice_captain['Name']} ({vice_captain['xP']:.1f} xP)\n"
     message += f"💰 *Squad Cost:* £{total_cost:.1f}m | *Total GW xP:* {total_xp:.1f}\n\n"
