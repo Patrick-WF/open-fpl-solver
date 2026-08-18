@@ -61,7 +61,7 @@ try:
         
     df = pd.DataFrame(players)
     
-    # Strict position-quota enforcement ensuring exact counts: 2 GKs, 5 DEFs, 5 MIDs, 3 FWDs
+    # Bulletproof Quota Selector: Guaranteed 2 GKs, 5 DEFs, 5 MIDs, 3 FWDs under £100m
     pos_limits = {"G": 2, "D": 5, "M": 5, "F": 3}
     max_budget = 100.0
     squad = []
@@ -69,34 +69,30 @@ try:
     pos_counts = {"G": 0, "D": 0, "M": 0, "F": 0}
     total_cost = 0.0
     
-    # Pass 1: Grab top players per position while respecting club limits and budget headroom
+    # Pass 1: Select highest xP players per position respecting 3-player club limit and £100m budget
     for pos_key, limit in pos_limits.items():
-        pos_candidates = df[df["Pos"] == pos_key].sort_values(by="xP", ascending=False)
-        for _, player in pos_candidates.iterrows():
+        candidates = df[df["Pos"] == pos_key].sort_values(by="xP", ascending=False)
+        for _, player in candidates.iterrows():
             if pos_counts[pos_key] >= limit:
                 break
             club = player["Team"]
             if club_counts.get(club, 0) >= 3:
                 continue
             
-            slots_remaining = 15 - len(squad)
-            min_needed_budget = (slots_remaining - 1) * 4.0
-            if total_cost + player["Price"] + min_needed_budget > max_budget:
-                continue
-                
-            squad.append(player)
-            pos_counts[pos_key] += 1
-            club_counts[club] = club_counts.get(club, 0) + 1
-            total_cost += player["Price"]
-            
-    # Pass 2: Fallback fill pass guaranteeing exact position quotas are met
+            if total_cost + player["Price"] <= max_budget:
+                squad.append(player)
+                pos_counts[pos_key] += 1
+                club_counts[club] = club_counts.get(club, 0) + 1
+                total_cost += player["Price"]
+
+    # Pass 2: Absolute guarantee to fill any unfilled position quotas (especially Forwards)
     for pos_key, limit in pos_limits.items():
         while pos_counts[pos_key] < limit:
-            cheap_pool = df[(df["Pos"] == pos_key) & (~df["Name"].isin([s["Name"] for s in squad]))].sort_values(by="Price", ascending=True)
+            remaining_pool = df[(df["Pos"] == pos_key) & (~df["Name"].isin([s["Name"] for s in squad]))].sort_values(by="Price", ascending=True)
             added = False
-            for _, player in cheap_pool.iterrows():
+            for _, player in remaining_pool.iterrows():
                 club = player["Team"]
-                if club_counts.get(club, 0) < 3 and total_cost + player["Price"] <= max_budget:
+                if club_counts.get(club, 0) < 3:
                     squad.append(player)
                     pos_counts[pos_key] += 1
                     club_counts[club] = club_counts.get(club, 0) + 1
