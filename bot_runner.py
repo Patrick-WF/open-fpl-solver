@@ -148,8 +148,6 @@ try:
     if current_squad_objs and len(squad_df) > 0:
         current_names_set = set(current_squad_names)
         if optimal_names != current_names_set:
-            # Evaluate best single transfer candidate (1st free transfer has no penalty)
-            # Find max xP gain where gain outweighs penalty (4 pts for extra hits beyond 1 free transfer)
             best_gain = 0
             best_out = None
             best_in = None
@@ -162,14 +160,11 @@ try:
                     for o_name, o_obj in opt_map.items():
                         if o_name not in current_names_set and o_obj["Pos"] == c_obj["Pos"]:
                             gain = o_obj["xP"] - c_obj["xP"]
-                            # Since 1st transfer is free, net gain needs to be > 0. 
-                            # If extra hits apply (-4 pts), net gain must exceed 4 pts.
                             if gain > best_gain:
                                 best_gain = gain
                                 best_out = c_name
                                 best_in = o_name
             
-            # If the gain exceeds the 4-point hit threshold or is a free transfer worthwhile upgrade
             if best_out and best_in:
                 if best_gain > 4.0:
                     transfers_advice = f"Transfer Out: {best_out} ➡️ Transfer In: {best_in} (Net Gain: +{best_gain:.1f} xP, justifies hit)"
@@ -178,13 +173,13 @@ try:
                 else:
                     transfers_advice = "Roll Free Transfer (Potential transfer gains do not outweigh hit penalty) 🔄"
 
-    # Select Optimal Starting XI (11 players) and Bench (4 players)
+    # Select Optimal Starting XI (11 players) and Bench (4 players) strictly enforced
     starting_xi = []
     bench = []
     
     gks_in_squad = squad_df[squad_df["Pos"] == "G"].sort_values(by="xP", ascending=False).reset_index(drop=True)
-    starting_xi.append(gks_in_squad.iloc[0])
-    bench.append(gks_in_squad.iloc[1])
+    starting_xi.append(gks_in_squad.iloc[0]) # 1 GK in Starting XI
+    bench.append(gks_in_squad.iloc[1])       # 1 GK on Bench
     
     outfielders = squad_df[squad_df["Pos"] != "G"].sort_values(by="xP", ascending=False).reset_index(drop=True)
     xi_outfielders = []
@@ -192,7 +187,7 @@ try:
     
     for _, player in outfielders.iterrows():
         pos = player["Pos"]
-        if len(xi_outfielders) < 10:
+        if len(xi_outfielders) < 10:  # Strictly 10 outfielders
             if pos == "D" and def_count < 5 and (def_count < 3 or (10 - len(xi_outfielders) > (3 - min(3, fwd_count)) + (3 - min(3, mid_count)))):
                 xi_outfielders.append(player); def_count += 1
             elif pos == "M" and mid_count < 5 and (mid_count < 3 or (10 - len(xi_outfielders) > (3 - min(3, fwd_count)) + (3 - min(3, def_count)))):
@@ -210,9 +205,10 @@ try:
                 elif pos == 'M' and mid_count < 5: xi_outfielders.append(player); mid_count += 1; break
                 elif pos == 'F' and fwd_count < 3: xi_outfielders.append(player); fwd_count += 1; break
 
-    starting_xi.extend(xi_outfielders)
+    starting_xi.extend(xi_outfielders) # Exactly 11 players in Starting XI
+    
     bench_outfielders = [p for p in outfielders.to_dict('records') if p['Name'] not in [x['Name'] for x in starting_xi]]
-    bench.extend(bench_outfielders)
+    bench.extend(bench_outfielders) # Exactly 4 players on Bench
     
     xi_df = pd.DataFrame(starting_xi)
     total_xi_xp = xi_df["xP"].sum()
