@@ -15,6 +15,7 @@ url_bootstrap = "https://fantasy.premierleague.com/api/bootstrap-static/"
 try:
     response = requests.get(url_bootstrap, timeout=15)
     if response.status_code != 200:
+        print(f"Error: FPL bootstrap-static returned status {response.status_code}")
         sys.exit(1)
         
     data = response.json()
@@ -74,10 +75,11 @@ try:
                 current_squad_total_cost += obj["Price"]
         print(f"Successfully fetched user team picks for Gameweek {current_gw} ({len(current_squad_objs)} players).")
     except Exception as e:
-        print(f"Could not fetch user picks ({e}), generating optimal baseline squad.")
+        print(f"Warning: Could not fetch user picks ({e}), generating optimal baseline squad.")
 
     # Fallback if API picks didn't load properly: build a valid 15-player squad
     if len(current_squad_objs) < 15:
+        print("Using fallback optimal squad generation...")
         pos_limits = {"G": 2, "D": 5, "M": 5, "F": 3}
         max_budget = 100.0
         squad = []
@@ -146,7 +148,7 @@ try:
         squad_df = pd.DataFrame(current_squad_objs)
         total_cost = current_squad_total_cost
 
-    # 2. Select Optimal Starting XI (11 players) and Bench (4 players) from YOUR squad
+    # 2. Select Optimal Starting XI (11 players) and Bench (4 players) from squad
     starting_xi = []
     bench = []
     
@@ -196,7 +198,7 @@ try:
     captain = sorted_xi.iloc[0]
     vice_captain = sorted_xi.iloc[1]
     
-    # 3. Intelligent Transfer & Bench Advice (Comparing your squad vs top available market options)
+    # 3. Intelligent Transfer & Bench Advice
     transfers_advice = "Roll Free Transfer (Hold Current Squad) 🔄"
     if len(current_squad_objs) >= 15:
         market_df = df.sort_values(by="xP", ascending=False)
@@ -206,25 +208,22 @@ try:
         best_out = None
         best_in = None
         
-        # Check if benching a low-xP starter in favor of a bench player is better than a -4 hit transfer
         lowest_starter = xi_df.sort_values(by="xP", ascending=True).iloc[0]
         best_bencher = pd.DataFrame(bench).sort_values(by="xP", ascending=False).iloc[0] if bench else None
         
         if best_bencher and best_bencher["xP"] > lowest_starter["xP"]:
             transfers_advice = f"Bench {lowest_starter['Name']} ({lowest_starter['xP']} xP) ➡️ Play {best_bencher['Name']} ({best_bencher['xP']} xP) instead of taking a hit"
         else:
-            # Look at market upgrades from your current squad
             for _, curr_p in squad_df.iterrows():
                 for _, mkt_p in market_df.iterrows():
                     if mkt_p["Name"] not in current_names and mkt_p["Pos"] == curr_p["Pos"]:
-                        if mkt_p["Price"] <= (curr_p["Price"] + 0.5): # budget headroom check
+                        if mkt_p["Price"] <= (curr_p["Price"] + 0.5):
                             gain = mkt_p["xP"] - curr_p["xP"]
                             if gain > best_gain:
                                 best_gain = gain
                                 best_out = curr_p["Name"]
                                 best_in = mkt_p["Name"]
             
-            # Apply 4-point hit penalty rule: gain must strictly exceed 4.0 xP to justify a hit beyond free transfer
             if best_out and best_in:
                 if best_gain > 4.0:
                     transfers_advice = f"Transfer Out: {best_out} ➡️ Transfer In: {best_in} (Net Gain: +{best_gain:.1f} xP, justifies -4 hit)"
@@ -257,10 +256,20 @@ try:
     message += "\n🛋️ *Substitutes (4)*\n"
     for r in bench: message += f"• [{r['Pos']}] {r['Name']} ({r['Team']}) - £{r['Price']}m | {r['xP']} xP\n"
         
+    # Send to Telegram with strict error checking
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
     res = requests.post(url, json=payload)
-    print("Telegram response:", res.status_code)
+    
+    print("Telegram API Response Status:", res.status_code)
+    print("Telegram API Response Body:", res.text)
+    
+    if res.status_code != 200:
+        print("Error: Failed to send message to Telegram.")
+        sys.exit(1)
+    else:
+        print("Successfully sent report to Telegram!")
 
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"Critical Error encountered: {e}")
+    sys.exit(1)
