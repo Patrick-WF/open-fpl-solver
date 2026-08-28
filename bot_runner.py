@@ -198,7 +198,7 @@ try:
     captain = sorted_xi.iloc[0]
     vice_captain = sorted_xi.iloc[1]
     
-    # 3. Intelligent Transfer & Bench Advice
+    # 3. Intelligent Transfer & Bench Advice (Using safe pandas checks)
     transfers_advice = "Roll Free Transfer (Hold Current Squad) 🔄"
     if len(current_squad_objs) >= 15:
         market_df = df.sort_values(by="xP", ascending=False)
@@ -208,29 +208,32 @@ try:
         best_out = None
         best_in = None
         
-        lowest_starter = xi_df.sort_values(by="xP", ascending=True).iloc[0]
-        best_bencher = pd.DataFrame(bench).sort_values(by="xP", ascending=False).iloc[0] if bench else None
+        xi_sorted_asc = xi_df.sort_values(by="xP", ascending=True)
+        bench_sorted_desc = pd.DataFrame(bench).sort_values(by="xP", ascending=False) if bench else pd.DataFrame()
         
-        if best_bencher and best_bencher["xP"] > lowest_starter["xP"]:
-            transfers_advice = f"Bench {lowest_starter['Name']} ({lowest_starter['xP']} xP) ➡️ Play {best_bencher['Name']} ({best_bencher['xP']} xP) instead of taking a hit"
-        else:
-            for _, curr_p in squad_df.iterrows():
-                for _, mkt_p in market_df.iterrows():
-                    if mkt_p["Name"] not in current_names and mkt_p["Pos"] == curr_p["Pos"]:
-                        if mkt_p["Price"] <= (curr_p["Price"] + 0.5):
-                            gain = mkt_p["xP"] - curr_p["xP"]
-                            if gain > best_gain:
-                                best_gain = gain
-                                best_out = curr_p["Name"]
-                                best_in = mkt_p["Name"]
-            
-            if best_out and best_in:
-                if best_gain > 4.0:
-                    transfers_advice = f"Transfer Out: {best_out} ➡️ Transfer In: {best_in} (Net Gain: +{best_gain:.1f} xP, justifies -4 hit)"
-                elif best_gain > 1.5:
-                    transfers_advice = f"Transfer Out: {best_out} ➡️ Transfer In: {best_in} (Free Transfer, +{best_gain:.1f} xP gain)"
-                else:
-                    transfers_advice = "Roll Free Transfer (Gains do not outweigh hit penalty) 🔄"
+        if not xi_sorted_asc.empty and not bench_sorted_desc.empty:
+            lowest_starter = xi_sorted_asc.iloc[0]
+            best_bencher = bench_sorted_desc.iloc[0]
+            if best_bencher["xP"] > lowest_starter["xP"]:
+                transfers_advice = f"Bench {lowest_starter['Name']} ({lowest_starter['xP']} xP) ➡️ Play {best_bencher['Name']} ({best_bencher['xP']} xP) instead of taking a hit"
+            else:
+                for _, curr_p in squad_df.iterrows():
+                    for _, mkt_p in market_df.iterrows():
+                        if mkt_p["Name"] not in current_names and mkt_p["Pos"] == curr_p["Pos"]:
+                            if mkt_p["Price"] <= (curr_p["Price"] + 0.5):
+                                gain = mkt_p["xP"] - curr_p["xP"]
+                                if gain > best_gain:
+                                    best_gain = gain
+                                    best_out = curr_p["Name"]
+                                    best_in = mkt_p["Name"]
+                
+                if best_out and best_in:
+                    if best_gain > 4.0:
+                        transfers_advice = f"Transfer Out: {best_out} ➡️ Transfer In: {best_in} (Net Gain: +{best_gain:.1f} xP, justifies -4 hit)"
+                    elif best_gain > 1.5:
+                        transfers_advice = f"Transfer Out: {best_out} ➡️ Transfer In: {best_in} (Free Transfer, +{best_gain:.1f} xP gain)"
+                    else:
+                        transfers_advice = "Roll Free Transfer (Gains do not outweigh hit penalty) 🔄"
 
     # 4. Chip Strategy Evaluation
     bench_xp = sum([b['xP'] for b in bench])
