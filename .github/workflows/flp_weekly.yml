@@ -2,8 +2,8 @@ name: Weekly FPL Automated Solver & Telegram Report
 
 on:
   schedule:
-    # Runs every Friday at 08:00 UTC
-    - cron: '0 8 * * 5'
+    # Shifted to 15 minutes past the hour to avoid peak top-of-the-hour traffic jams
+    - cron: '15 8 * * 5'
   workflow_dispatch: # Allows manual trigger from GitHub UI anytime
 
 jobs:
