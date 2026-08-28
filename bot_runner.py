@@ -77,7 +77,7 @@ try:
     except Exception as e:
         print(f"Warning: Could not fetch user picks ({e}), generating optimal baseline squad.")
 
-    # Fallback if API picks didn't load properly: build a valid 15-player squad
+    # Fallback if API picks didn't load properly: build a valid 15-player squad safely using dicts
     if len(current_squad_objs) < 15:
         print("Using fallback optimal squad generation...")
         pos_limits = {"G": 2, "D": 5, "M": 5, "F": 3}
@@ -90,18 +90,20 @@ try:
         for pos_key, limit in pos_limits.items():
             candidates = df[df["Pos"] == pos_key].sort_values(by="xP", ascending=False)
             for _, player in candidates.iterrows():
+                p_dict = player.to_dict()
                 if pos_counts[pos_key] >= limit: break
-                club = player["Team"]
+                club = p_dict["Team"]
                 if club_counts.get(club, 0) >= 3: continue
                 
                 slots_left_total = 15 - len(squad)
                 min_cost_needed = (slots_left_total - 1) * 4.0
-                if total_cost + player["Price"] + min_cost_needed > max_budget:
+                if total_cost + p_dict["Price"] + min_cost_needed > max_budget:
                     cheaper_options = candidates[candidates["Price"] <= (max_budget - total_cost - min_cost_needed)]
                     affordable = None
                     for _, opt in cheaper_options.iterrows():
-                        if opt["Name"] not in [s["Name"] for s in squad] and club_counts.get(opt["Team"], 0) < 3:
-                            affordable = opt
+                        opt_dict = opt.to_dict()
+                        if opt_dict["Name"] not in [s["Name"] for s in squad] and club_counts.get(opt_dict["Team"], 0) < 3:
+                            affordable = opt_dict
                             break
                     if affordable is not None:
                         squad.append(affordable)
@@ -110,10 +112,10 @@ try:
                         total_cost += affordable["Price"]
                         break
                 else:
-                    squad.append(player)
+                    squad.append(p_dict)
                     pos_counts[pos_key] += 1
                     club_counts[club] = club_counts.get(club, 0) + 1
-                    total_cost += player["Price"]
+                    total_cost += p_dict["Price"]
 
         # Guarantee pass for 15-player squad
         for pos_key, limit in pos_limits.items():
@@ -121,24 +123,26 @@ try:
                 cheapest_pool = df[(df["Pos"] == pos_key) & (~df["Name"].isin([s["Name"] for s in squad]))].sort_values(by="Price", ascending=True)
                 added = False
                 for _, player in cheapest_pool.iterrows():
-                    club = player["Team"]
+                    p_dict = player.to_dict()
+                    club = p_dict["Team"]
                     slots_left_total = 15 - len(squad)
                     min_cost_needed = (slots_left_total - 1) * 4.0
-                    if club_counts.get(club, 0) < 3 and total_cost + player["Price"] + min_cost_needed <= max_budget:
-                        squad.append(player)
+                    if club_counts.get(club, 0) < 3 and total_cost + p_dict["Price"] + min_cost_needed <= max_budget:
+                        squad.append(p_dict)
                         pos_counts[pos_key] += 1
                         club_counts[club] = club_counts.get(club, 0) + 1
-                        total_cost += player["Price"]
+                        total_cost += p_dict["Price"]
                         added = True
                         break
                 if not added:
                     for _, player in cheapest_pool.iterrows():
-                        club = player["Team"]
-                        if club_counts.get(club, 0) < 3 and total_cost + player["Price"] <= max_budget:
-                            squad.append(player)
+                        p_dict = player.to_dict()
+                        club = p_dict["Team"]
+                        if club_counts.get(club, 0) < 3 and total_cost + p_dict["Price"] <= max_budget:
+                            squad.append(p_dict)
                             pos_counts[pos_key] += 1
                             club_counts[club] = club_counts.get(club, 0) + 1
-                            total_cost += player["Price"]
+                            total_cost += p_dict["Price"]
                             added = True
                             break
                     break
@@ -198,7 +202,7 @@ try:
     captain = sorted_xi.iloc[0]
     vice_captain = sorted_xi.iloc[1]
     
-    # 3. Intelligent Transfer & Bench Advice (Using safe pandas checks)
+    # 3. Intelligent Transfer & Bench Advice
     transfers_advice = "Roll Free Transfer (Hold Current Squad) 🔄"
     if len(current_squad_objs) >= 15:
         market_df = df.sort_values(by="xP", ascending=False)
