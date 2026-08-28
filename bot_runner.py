@@ -199,10 +199,10 @@ try:
     total_xi_xp = xi_df["xP"].sum()
     
     sorted_xi = xi_df.sort_values(by="xP", ascending=False).reset_index(drop=True)
-    captain = sorted_xi.iloc[0]
-    vice_captain = sorted_xi.iloc[1]
+    captain = sorted_xi.iloc[0].to_dict()
+    vice_captain = sorted_xi.iloc[1].to_dict()
     
-    # 3. Intelligent Transfer & Bench Advice
+    # 3. Intelligent Transfer & Bench Advice (Strictly scalar-safe)
     transfers_advice = "Roll Free Transfer (Hold Current Squad) 🔄"
     if len(current_squad_objs) >= 15:
         market_df = df.sort_values(by="xP", ascending=False)
@@ -213,11 +213,11 @@ try:
         best_in = None
         
         xi_sorted_asc = xi_df.sort_values(by="xP", ascending=True)
-        bench_sorted_desc = pd.DataFrame(bench).sort_values(by="xP", ascending=False) if bench else pd.DataFrame()
+        bench_df = pd.DataFrame(bench)
         
-        if not xi_sorted_asc.empty and not bench_sorted_desc.empty:
-            lowest_starter = xi_sorted_asc.iloc[0]
-            best_bencher = bench_sorted_desc.iloc[0]
+        if not xi_sorted_asc.empty and not bench_df.empty:
+            lowest_starter = xi_sorted_asc.iloc[0].to_dict()
+            best_bencher = bench_df.sort_values(by="xP", ascending=False).iloc[0].to_dict()
             if best_bencher["xP"] > lowest_starter["xP"]:
                 transfers_advice = f"Bench {lowest_starter['Name']} ({lowest_starter['xP']} xP) ➡️ Play {best_bencher['Name']} ({best_bencher['xP']} xP) instead of taking a hit"
             else:
