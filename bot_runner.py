@@ -57,9 +57,10 @@ try:
             
     df = pd.DataFrame(players)
 
-    # 1. Fetch user's actual current live team picks from FPL API
+    # 1. Fetch user's actual current live team picks and used chips from FPL API
     current_squad_objs = []
     current_squad_total_cost = 0.0
+    used_chips = set()
     try:
         event_url = f"https://fantasy.premierleague.com/api/entry/{TEAM_ID}/"
         entry_res = requests.get(event_url, timeout=10).json()
@@ -73,9 +74,16 @@ try:
                 obj = elements_map[pid]
                 current_squad_objs.append(obj)
                 current_squad_total_cost += obj["Price"]
-        print(f"Successfully fetched user team picks for Gameweek {current_gw} ({len(current_squad_objs)} players).")
+                
+        # Check chip usage history
+        history_url = f"https://fantasy.premierleague.com/api/entry/{TEAM_ID}/history/"
+        history_res = requests.get(history_url, timeout=10).json()
+        for chip in history_res.get("chips", []):
+            used_chips.add(chip.get("name"))
+            
+        print(f"Successfully fetched user team picks for GW {current_gw} ({len(current_squad_objs)} players). Used chips: {used_chips}")
     except Exception as e:
-        print(f"Warning: Could not fetch user picks ({e}), generating optimal baseline squad.")
+        print(f"Warning: Could not fetch user picks/chips ({e}), generating optimal baseline squad.")
 
     # Fallback if API picks didn't load properly: build a valid 15-player squad safely using dicts
     if len(current_squad_objs) < 15:
@@ -152,7 +160,42 @@ try:
         squad_df = pd.DataFrame(current_squad_objs)
         total_cost = current_squad_total_cost
 
-    # 2. Select Optimal Starting XI (11 players) and Bench (4 players) from squad
+    # 2. Strict Single Transfer Recommendation Logic (Market vs Owned Squad)
+    transfers_advice = "Roll Free Transfer (Hold Current Squad) 🔄"
+    market_df = df.sort_values(by="xP", ascending=False)
+    current_names = set(squad_df["Name"].tolist())
+    
+    best_gain = 0
+    best_out_obj = None
+    best_in_obj = None
+    
+    if len(squad_df) >= 15:
+        for _, curr_p in squad_df.iterrows():
+            for _, mkt_p in market_df.iterrows():
+                if mkt_p["Name"] not in current_names and mkt_p["Pos"] == curr_p["Pos"]:
+                    if mkt_p["Price"] <= (curr_p["Price"] + 0.5):
+                        gain = mkt_p["xP"] - curr_p["xP"]
+                        if gain > best_gain:
+                            best_gain = gain
+                            best_out_obj = curr_p.to_dict()
+                            best_in_obj = mkt_p.to_dict()
+        
+        if best_out_obj and best_in_obj:
+            if best_gain > 4.0:
+                transfers_advice = f"Transfer Out: {best_out_obj['Name']} ➡️ Transfer In: {best_in_obj['Name']} (Net Gain: +{best_gain:.1f} xP, justifies -4 hit)"
+            elif best_gain > 1.5:
+                transfers_advice = f"Transfer Out: {best_out_obj['Name']} ➡️ Transfer In: {best_in_obj['Name']} (Free Transfer, +{best_gain:.1f} xP gain)"
+            else:
+                transfers_advice = "Roll Free Transfer (Gains do not outweigh hit penalty) 🔄"
+
+    # 3. Simulate Transfer immediately in squad_df if a transfer is recommended
+    if best_out_obj and best_in_obj and ("Free Transfer" in transfers_advice or "justifies -4 hit" in transfers_advice):
+        squad_list = squad_df.to_dict("records")
+        squad_list = [best_in_obj if p["Name"] == best_out_obj["Name"] else p for p in squad_list]
+        squad_df = pd.DataFrame(squad_list)
+        total_cost = total_cost - best_out_obj["Price"] + best_in_obj["Price"]
+
+    # 4. Select Optimal Starting XI (11 players) and Bench (4 players) from updated squad
     starting_xi = []
     bench = []
     
@@ -202,43 +245,20 @@ try:
     captain = sorted_xi.iloc[0].to_dict()
     vice_captain = sorted_xi.iloc[1].to_dict()
     
-    # 3. Strict Single Transfer Recommendation Logic (Market vs Owned Squad)
-    transfers_advice = "Roll Free Transfer (Hold Current Squad) 🔄"
-    if len(current_squad_objs) >= 15:
-        market_df = df.sort_values(by="xP", ascending=False)
-        current_names = {p["Name"] for p in current_squad_objs}
-        
-        best_gain = 0
-        best_out = None
-        best_in = None
-        
-        # Scan your squad against available market players for a single optimal transfer upgrade
-        for _, curr_p in squad_df.iterrows():
-            for _, mkt_p in market_df.iterrows():
-                if mkt_p["Name"] not in current_names and mkt_p["Pos"] == curr_p["Pos"]:
-                    if mkt_p["Price"] <= (curr_p["Price"] + 0.5): # within budget headroom
-                        gain = mkt_p["xP"] - curr_p["xP"]
-                        if gain > best_gain:
-                            best_gain = gain
-                            best_out = curr_p["Name"]
-                            best_in = mkt_p["Name"]
-        
-        # Apply strict rules: Free transfer requires > 1.5 xP gain. Hit (-4 pts) requires > 4.0 xP gain.
-        if best_out and best_in:
-            if best_gain > 4.0:
-                transfers_advice = f"Transfer Out: {best_out} ➡️ Transfer In: {best_in} (Net Gain: +{best_gain:.1f} xP, justifies -4 hit)"
-            elif best_gain > 1.5:
-                transfers_advice = f"Transfer Out: {best_out} ➡️ Transfer In: {best_in} (Free Transfer, +{best_gain:.1f} xP gain)"
-            else:
-                transfers_advice = "Roll Free Transfer (Gains do not outweigh hit penalty) 🔄"
-
-    # 4. Chip Strategy Evaluation
+    # 5. Chip Strategy Evaluation (Excluding already used chips)
     bench_xp = sum([b['xP'] for b in bench])
     chip_advice = "Hold Chips 🛡️ (Save Free Hit / Wildcards)"
-    if captain['xP'] >= 11.5: chip_advice = "Triple Captain Recommended 🚀"
-    elif bench_xp >= 22.0: chip_advice = "Bench Boost Recommended 📈"
     
-    # 5. Format Telegram Message Report
+    if captain['xP'] >= 11.5 and "3xc" not in used_chips:
+        chip_advice = "Triple Captain Recommended 🚀"
+    elif bench_xp >= 22.0 and "bboost" not in used_chips:
+        chip_advice = "Bench Boost Recommended 📈"
+    elif "3xc" in used_chips and captain['xP'] >= 11.5:
+        chip_advice = "Hold Chips 🛡️ (Triple Captain already used)"
+    elif "bboost" in used_chips and bench_xp >= 22.0:
+        chip_advice = "Hold Chips 🛡️ (Bench Boost already used)"
+    
+    # 6. Format Telegram Message Report
     message = "🏆 *FPL Weekly Team Manager Report*\n\n"
     message += f"⭐ *Captain:* {captain['Name']} ({captain['xP']:.1f} xP)\n"
     message += f"🤝 *Vice-Captain:* {vice_captain['Name']} ({vice_captain['xP']:.1f} xP)\n"
