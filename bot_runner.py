@@ -258,7 +258,7 @@ try:
     elif "bboost" in used_chips and bench_xp >= 22.0:
         chip_advice = "Hold Chips 🛡️ (Bench Boost already used)"
     
-    # 6. Format Telegram Message Report
+    # 6. Format Telegram Message Report (Categorized by Position)
     message = "🏆 *FPL Weekly Team Manager Report*\n\n"
     message += f"⭐ *Captain:* {captain['Name']} ({captain['xP']:.1f} xP)\n"
     message += f"🤝 *Vice-Captain:* {vice_captain['Name']} ({vice_captain['xP']:.1f} xP)\n"
@@ -267,11 +267,22 @@ try:
     message += f"💰 *Squad Cost:* £{total_cost:.1f}m | *Starting XI xP:* {total_xi_xp:.1f}\n\n"
     
     message += "⚽ *Starting XI (11)*\n"
-    message += f"• *GK:* {starting_xi[0]['Name']} ({starting_xi[0]['Team']}) - £{starting_xi[0]['Price']}m | {starting_xi[0]['xP']} xP\n"
     
-    for r in [p for p in starting_xi if p['Pos'] == 'D']: message += f"• {r['Name']} ({r['Team']}) - £{r['Price']}m | {r['xP']} xP\n"
-    for r in [p for p in starting_xi if p['Pos'] == 'M']: message += f"• {r['Name']} ({r['Team']}) - £{r['Price']}m | {r['xP']} xP\n"
-    for r in [p for p in starting_xi if p['Pos'] == 'F']: message += f"• {r['Name']} ({r['Team']}) - £{r['Price']}m | {r['xP']} xP\n"
+    # Goalkeepers
+    for r in [p for p in starting_xi if p['Pos'] == 'G']: 
+        message += f"• *GK:* {r['Name']} ({r['Team']}) - £{r['Price']}m | {r['xP']} xP\n"
+    
+    # Defenders
+    for r in [p for p in starting_xi if p['Pos'] == 'D']: 
+        message += f"• *DEF:* {r['Name']} ({r['Team']}) - £{r['Price']}m | {r['xP']} xP\n"
+    
+    # Midfielders
+    for r in [p for p in starting_xi if p['Pos'] == 'M']: 
+        message += f"• *MID:* {r['Name']} ({r['Team']}) - £{r['Price']}m | {r['xP']} xP\n"
+    
+    # Forwards
+    for r in [p for p in starting_xi if p['Pos'] == 'F']: 
+        message += f"• *FWD:* {r['Name']} ({r['Team']}) - £{r['Price']}m | {r['xP']} xP\n"
         
     message += "\n🛋️ *Substitutes (4)*\n"
     for r in bench: message += f"• [{r['Pos']}] {r['Name']} ({r['Team']}) - £{r['Price']}m | {r['xP']} xP\n"
