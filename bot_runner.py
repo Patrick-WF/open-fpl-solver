@@ -27,7 +27,7 @@ FPL_WILDCARD_THIS_WEEK = (
     in {"1", "true", "yes", "y", "on"}
 )
 
-# Candidate pool sizes
+# Wildcard candidate pool sizes
 WILDCARD_POOL_PER_POSITION = {
     1: 30,   # GK
     2: 65,   # DEF
@@ -88,6 +88,7 @@ def normalise_name(name):
 # ============================================================
 
 SESSION = requests.Session()
+
 SESSION.headers.update(
     {
         "User-Agent": (
@@ -100,29 +101,59 @@ SESSION.headers.update(
 
 def fpl_get(path, timeout=30):
     url = f"{FPL_BASE}/{path.lstrip('/')}"
-    response = SESSION.get(url, timeout=timeout)
+
+    response = SESSION.get(
+        url,
+        timeout=timeout,
+    )
+
     response.raise_for_status()
+
     return response.json()
 
 
 def fetch_bootstrap():
-    print("Fetching bootstrap-static...", flush=True)
+    print(
+        "Fetching bootstrap-static...",
+        flush=True,
+    )
+
     return fpl_get("bootstrap-static/")
 
 
 def fetch_fixtures():
-    print("Fetching fixtures...", flush=True)
+    print(
+        "Fetching fixtures...",
+        flush=True,
+    )
+
     return fpl_get("fixtures/")
 
 
 def fetch_current_team(team_id):
-    print(f"Fetching FPL entry {team_id}...", flush=True)
+    print(
+        f"Fetching FPL entry {team_id}...",
+        flush=True,
+    )
 
-    entry = fpl_get(f"entry/{team_id}/")
-    picks = fpl_get(f"entry/{team_id}/event/1/picks/")
+    entry = fpl_get(
+        f"entry/{team_id}/"
+    )
+
+    # The picks endpoint requires the event number.
+    # We initially retrieve event 1 as a fallback and then
+    # try the current event below where possible.
+    try:
+        picks = fpl_get(
+            f"entry/{team_id}/event/1/picks/"
+        )
+    except Exception:
+        picks = {}
 
     try:
-        history = fpl_get(f"entry/{team_id}/history/")
+        history = fpl_get(
+            f"entry/{team_id}/history/"
+        )
     except Exception:
         history = {}
 
@@ -141,14 +172,21 @@ def determine_target_gameweek(events):
     if not events:
         return None
 
+    # Prefer the official next gameweek.
     for event in events:
         if event.get("is_next"):
-            return safe_int(event.get("id"))
+            return safe_int(
+                event.get("id")
+            )
 
+    # Otherwise use the current gameweek.
     for event in events:
         if event.get("is_current"):
-            return safe_int(event.get("id"))
+            return safe_int(
+                event.get("id")
+            )
 
+    # Otherwise find the next unfinished gameweek.
     future = [
         safe_int(e.get("id"))
         for e in events
@@ -159,18 +197,26 @@ def determine_target_gameweek(events):
     if future:
         return min(future)
 
-    return max(
+    valid_ids = [
         safe_int(e.get("id"))
         for e in events
         if safe_int(e.get("id")) > 0
-    )
+    ]
+
+    if valid_ids:
+        return max(valid_ids)
+
+    return None
 
 
 # ============================================================
 # FIXTURE CONTEXT
 # ============================================================
 
-def build_fixture_context(fixtures, target_gw):
+def build_fixture_context(
+    fixtures,
+    target_gw,
+):
     """
     Creates a lightweight fixture difficulty adjustment.
 
@@ -180,30 +226,46 @@ def build_fixture_context(fixtures, target_gw):
     fixture_map = defaultdict(list)
 
     for fixture in fixtures:
-        if safe_int(fixture.get("event")) != target_gw:
+
+        if safe_int(
+            fixture.get("event")
+        ) != target_gw:
             continue
 
-        team_h = safe_int(fixture.get("team_h"))
-        team_a = safe_int(fixture.get("team_a"))
+        team_h = safe_int(
+            fixture.get("team_h")
+        )
+
+        team_a = safe_int(
+            fixture.get("team_a")
+        )
 
         if team_h:
+
             fixture_map[team_h].append(
                 {
                     "opponent": team_a,
                     "home": True,
                     "difficulty": safe_int(
-                        fixture.get("team_h_difficulty"), 3
+                        fixture.get(
+                            "team_h_difficulty",
+                            3,
+                        )
                     ),
                 }
             )
 
         if team_a:
+
             fixture_map[team_a].append(
                 {
                     "opponent": team_h,
                     "home": False,
                     "difficulty": safe_int(
-                        fixture.get("team_a_difficulty"), 3
+                        fixture.get(
+                            "team_a_difficulty",
+                            3,
+                        )
                     ),
                 }
             )
@@ -211,15 +273,19 @@ def build_fixture_context(fixtures, target_gw):
     return fixture_map
 
 
-def difficulty_multiplier(difficulty):
+def difficulty_multiplier(
+    difficulty,
+):
     """
     Conservative fixture multiplier.
 
-    Keeps fixture effects relatively small so the model does not
-    wildly overreact to one fixture.
+    Fixture difficulty affects the model, but only modestly.
     """
 
-    difficulty = safe_float(difficulty, 3.0)
+    difficulty = safe_float(
+        difficulty,
+        3.0,
+    )
 
     mapping = {
         1: 1.10,
@@ -229,7 +295,10 @@ def difficulty_multiplier(difficulty):
         5: 0.89,
     }
 
-    return mapping.get(int(round(difficulty)), 1.0)
+    return mapping.get(
+        int(round(difficulty)),
+        1.0,
+    )
 
 
 # ============================================================
@@ -238,8 +307,9 @@ def difficulty_multiplier(difficulty):
 
 def estimate_minutes(player):
     """
-    IMPORTANT:
-    build_players() normalises FPL fields to:
+    Estimate expected minutes using the NORMALISED fields
+    created by build_players():
+
         Chance
         Form
         Minutes
@@ -247,38 +317,73 @@ def estimate_minutes(player):
         Appearances
         Status
 
-    The old version incorrectly looked for the raw API names,
-    which caused almost everybody to receive ~48 expected minutes.
-
-    This version uses the normalised fields correctly.
+    This fixes the previous problem where the model was looking
+    for the raw API field names and therefore defaulting almost
+    everyone to approximately 48 expected minutes.
     """
 
-    chance = safe_float(player.get("Chance"), 100.0)
-    availability = clamp(chance / 100.0, 0.0, 1.0)
+    chance = safe_float(
+        player.get("Chance"),
+        100.0,
+    )
 
-    minutes = safe_float(player.get("Minutes"))
-    starts = safe_float(player.get("Starts"))
-    appearances = safe_float(player.get("Appearances"))
-    form = safe_float(player.get("Form"))
+    availability = clamp(
+        chance / 100.0,
+        0.0,
+        1.0,
+    )
 
-    status = str(player.get("Status", "")).lower().strip()
+    minutes = safe_float(
+        player.get("Minutes")
+    )
+
+    starts = safe_float(
+        player.get("Starts")
+    )
+
+    appearances = safe_float(
+        player.get("Appearances")
+    )
+
+    form = safe_float(
+        player.get("Form")
+    )
+
+    status = str(
+        player.get("Status", "")
+    ).lower().strip()
 
     # FPL status:
     # u = unavailable
     # i = injured
     # s = suspended
     # n = not available / other
-    if status in {"u", "i", "s", "n"}:
-        availability = min(availability, 0.25)
+    if status in {
+        "u",
+        "i",
+        "s",
+        "n",
+    }:
+        availability = min(
+            availability,
+            0.25,
+        )
 
     if chance <= 25:
-        availability = min(availability, 0.25)
+        availability = min(
+            availability,
+            0.25,
+        )
 
     # --------------------------------------------------------
-    # Estimate starting probability
+    # Starting probability
     # --------------------------------------------------------
 
-    if starts > 0 and appearances > 0:
+    if (
+        starts > 0
+        and appearances > 0
+    ):
+
         start_rate = clamp(
             starts / appearances,
             0.0,
@@ -286,6 +391,7 @@ def estimate_minutes(player):
         )
 
     elif starts > 0:
+
         start_rate = clamp(
             starts
             / max(
@@ -298,29 +404,52 @@ def estimate_minutes(player):
         )
 
     elif minutes > 0:
+
         if minutes < 300:
             start_rate = 0.45
+
         elif minutes < 600:
             start_rate = 0.60
+
         else:
             start_rate = 0.65
 
     else:
+
         start_rate = 0.40
 
-    # Stronger evidence from larger samples
-    if minutes >= 1200 and starts >= 12:
-        start_rate = max(start_rate, 0.80)
+    # Strong evidence from larger samples.
+    if (
+        minutes >= 1200
+        and starts >= 12
+    ):
+        start_rate = max(
+            start_rate,
+            0.80,
+        )
 
-    elif minutes >= 800 and starts >= 8:
-        start_rate = max(start_rate, 0.70)
+    elif (
+        minutes >= 800
+        and starts >= 8
+    ):
+        start_rate = max(
+            start_rate,
+            0.70,
+        )
 
-    elif minutes >= 400 and starts >= 4:
-        start_rate = max(start_rate, 0.60)
+    elif (
+        minutes >= 400
+        and starts >= 4
+    ):
+        start_rate = max(
+            start_rate,
+            0.60,
+        )
 
-    # Small form adjustment
+    # Small form adjustment.
     if form >= 7.0:
         start_rate += 0.05
+
     elif form >= 5.0:
         start_rate += 0.025
 
@@ -330,7 +459,7 @@ def estimate_minutes(player):
         0.97,
     )
 
-    # Blend player-specific starting probability with neutral prior
+    # Blend player-specific probability with neutral prior.
     start_probability = (
         0.85 * start_rate
         + 0.15 * 0.50
@@ -347,6 +476,7 @@ def estimate_minutes(player):
     # --------------------------------------------------------
 
     if starts > 0:
+
         start_minutes = clamp(
             minutes / starts,
             60.0,
@@ -354,6 +484,7 @@ def estimate_minutes(player):
         )
 
     elif minutes > 0:
+
         denominator = (
             appearances
             if appearances > 0
@@ -367,6 +498,7 @@ def estimate_minutes(player):
         )
 
     else:
+
         start_minutes = 70.0
 
     # --------------------------------------------------------
@@ -423,17 +555,30 @@ def estimate_minutes(player):
 # BAYESIAN SHRINKAGE
 # ============================================================
 
-def shrink_rate(observed, prior, sample_size, prior_weight=8.0):
+def shrink_rate(
+    observed,
+    prior,
+    sample_size,
+    prior_weight=8.0,
+):
     """
-    Simple Bayesian-style shrinkage.
+    Bayesian-style shrinkage.
 
-    Small samples move toward a sensible prior.
-    Large samples retain more of the observed rate.
+    Small samples are pulled towards the positional prior.
     """
 
-    observed = safe_float(observed)
-    prior = safe_float(prior)
-    sample_size = max(0.0, safe_float(sample_size))
+    observed = safe_float(
+        observed
+    )
+
+    prior = safe_float(
+        prior
+    )
+
+    sample_size = max(
+        0.0,
+        safe_float(sample_size),
+    )
 
     weight = sample_size / (
         sample_size + prior_weight
@@ -454,8 +599,6 @@ def project_player(
     team_strengths,
     fixture_context,
 ):
-    element_id = safe_int(player.get("id"))
-
     position = safe_int(
         player.get("ElementType")
     )
@@ -468,14 +611,16 @@ def project_player(
         player.get("Team")
     )
 
-    minutes_info = estimate_minutes(player)
+    minutes_info = estimate_minutes(
+        player
+    )
 
-    expected_minutes = minutes_info[
-        "expected_minutes"
-    ]
+    expected_minutes = (
+        minutes_info["expected_minutes"]
+    )
 
     # --------------------------------------------------------
-    # Historical / season data
+    # Season data
     # --------------------------------------------------------
 
     xg = safe_float(
@@ -507,10 +652,9 @@ def project_player(
     )
 
     # --------------------------------------------------------
-    # Position priors
+    # Positional priors
     # --------------------------------------------------------
 
-    # Conservative priors per 90.
     position_prior = {
         1: {
             "xg90": 0.02,
@@ -539,7 +683,7 @@ def project_player(
     )
 
     # --------------------------------------------------------
-    # Convert season xG/xA to rates
+    # Convert xG/xA into rates
     # --------------------------------------------------------
 
     season_90s = max(
@@ -549,10 +693,14 @@ def project_player(
         1.0,
     )
 
-    observed_xg90 = xg / season_90s
-    observed_xa90 = xa / season_90s
+    observed_xg90 = (
+        xg / season_90s
+    )
 
-    # Bayesian shrinkage
+    observed_xa90 = (
+        xa / season_90s
+    )
+
     xg90 = shrink_rate(
         observed_xg90,
         prior["xg90"],
@@ -577,20 +725,24 @@ def project_player(
     )
 
     if fixtures:
-        fixture_mult = sum(
-            difficulty_multiplier(
-                f["difficulty"]
+
+        fixture_mult = (
+            sum(
+                difficulty_multiplier(
+                    f["difficulty"]
+                )
+                for f in fixtures
             )
-            for f in fixtures
-        ) / len(fixtures)
+            / len(fixtures)
+        )
 
     else:
+
         fixture_mult = 1.0
 
-    # Small home advantage
-    home_bonus = 1.0
-
+    # Small home advantage.
     if fixtures:
+
         home_count = sum(
             1
             for f in fixtures
@@ -598,11 +750,8 @@ def project_player(
         )
 
         if home_count:
-            home_bonus = 1.015
+            fixture_mult *= 1.015
 
-    fixture_mult *= home_bonus
-
-    # Keep adjustment bounded.
     fixture_mult = clamp(
         fixture_mult,
         0.88,
@@ -621,7 +770,7 @@ def project_player(
     attack_strength = safe_float(
         team_strength.get(
             "attack",
-            1.0
+            1.0,
         ),
         1.0,
     )
@@ -629,7 +778,7 @@ def project_player(
     defence_strength = safe_float(
         team_strength.get(
             "defence",
-            1.0
+            1.0,
         ),
         1.0,
     )
@@ -647,33 +796,45 @@ def project_player(
     )
 
     # --------------------------------------------------------
-    # Expected event rates
+    # Adjust attacking rates
     # --------------------------------------------------------
 
-    if position == 4:
-        xg90 *= attack_strength
-        xa90 *= attack_strength
+    if position in {
+        3,
+        4,
+    }:
 
-    elif position == 3:
         xg90 *= attack_strength
         xa90 *= attack_strength
 
     elif position == 2:
+
+        xg90 *= (
+            attack_strength * 0.90
+        )
+
         xa90 *= attack_strength
-        xg90 *= attack_strength * 0.90
 
     else:
-        xg90 *= attack_strength * 0.50
-        xa90 *= attack_strength * 0.50
+
+        xg90 *= (
+            attack_strength * 0.50
+        )
+
+        xa90 *= (
+            attack_strength * 0.50
+        )
 
     xg90 *= fixture_mult
     xa90 *= fixture_mult
 
     # --------------------------------------------------------
-    # Expected event points
+    # Expected events
     # --------------------------------------------------------
 
-    mins_factor = expected_minutes / 90.0
+    mins_factor = (
+        expected_minutes / 90.0
+    )
 
     expected_goals = (
         xg90 * mins_factor
@@ -683,16 +844,18 @@ def project_player(
         xa90 * mins_factor
     )
 
-    # FPL scoring
     if position == 4:
         goal_points = 4.0
         assist_points = 3.0
+
     elif position == 3:
         goal_points = 5.0
         assist_points = 3.0
+
     elif position == 2:
         goal_points = 6.0
         assist_points = 3.0
+
     else:
         goal_points = 0.0
         assist_points = 0.0
@@ -717,10 +880,14 @@ def project_player(
     )
 
     # --------------------------------------------------------
-    # Clean-sheet points
+    # Clean sheets
     # --------------------------------------------------------
 
-    if position in {2, 3}:
+    if position in {
+        2,
+        3,
+    }:
+
         base_clean_sheet = {
             2: 0.42,
             3: 0.30,
@@ -745,6 +912,7 @@ def project_player(
         )
 
     elif position == 1:
+
         clean_sheet_probability = clamp(
             0.42
             * defence_strength
@@ -760,16 +928,17 @@ def project_player(
         )
 
     else:
+
         clean_sheet_score = 0.0
 
     # --------------------------------------------------------
-    # GK saves
+    # Goalkeeper saves
     # --------------------------------------------------------
 
     save_score = 0.0
 
     if position == 1:
-        # Conservative expected saves.
+
         expected_saves = (
             2.8
             * mins_factor
@@ -783,12 +952,14 @@ def project_player(
     # Bonus / BPS
     # --------------------------------------------------------
 
-    # Historical BPS acts only as a small stabiliser.
     if appearances > 0:
+
         bps_per_app = (
             bps / appearances
         )
+
     else:
+
         bps_per_app = 0.0
 
     bonus_score = clamp(
@@ -801,7 +972,6 @@ def project_player(
     # Form adjustment
     # --------------------------------------------------------
 
-    # Small, deliberately capped.
     form_adjustment = clamp(
         (form - 5.0) * 0.05,
         -0.20,
@@ -809,14 +979,18 @@ def project_player(
     )
 
     # --------------------------------------------------------
-    # Historical points stabiliser
+    # Historical stabiliser
     # --------------------------------------------------------
 
     if appearances > 0:
+
         points_per_app = (
-            total_points / appearances
+            total_points
+            / appearances
         )
+
     else:
+
         points_per_app = 0.0
 
     historical_stabiliser = clamp(
@@ -826,7 +1000,7 @@ def project_player(
     )
 
     # --------------------------------------------------------
-    # Expected points
+    # Final xP
     # --------------------------------------------------------
 
     expected_points = (
@@ -840,7 +1014,6 @@ def project_player(
         + historical_stabiliser
     )
 
-    # Keep projections realistic.
     expected_points = clamp(
         expected_points,
         0.0,
@@ -890,31 +1063,12 @@ def build_players(
 
     team_strengths = {}
 
-    # Normalise team strengths.
     for team in teams:
+
         team_id = safe_int(
             team.get("id")
         )
 
-        team_strengths[team_id] = {
-            "attack": safe_float(
-                team.get(
-                    "strength_attack_home",
-                    1000,
-                ),
-                1000,
-            ) / 1000.0,
-
-            "defence": safe_float(
-                team.get(
-                    "strength_defence_home",
-                    1000,
-                ),
-                1000,
-            ) / 1000.0,
-        }
-
-        # Blend home/away strength where available.
         attack_home = safe_float(
             team.get(
                 "strength_attack_home",
@@ -966,19 +1120,25 @@ def build_players(
             ),
         }
 
-    fixture_context = build_fixture_context(
-        fixtures,
-        target_gw,
+    fixture_context = (
+        build_fixture_context(
+            fixtures,
+            target_gw,
+        )
     )
 
     players = []
 
     for raw in elements:
+
         status = str(
-            raw.get("status", "")
+            raw.get(
+                "status",
+                "",
+            )
         ).lower().strip()
 
-        # Do not consider clearly unavailable players.
+        # Exclude unavailable players.
         if status in {
             "u",
             "i",
@@ -994,7 +1154,7 @@ def build_players(
             100.0,
         )
 
-        # Very low chance players are not useful Wildcard candidates.
+        # Exclude players with very low chance.
         if chance <= 25:
             continue
 
@@ -1071,7 +1231,9 @@ def build_players(
             "Status": status,
 
             "Selected": safe_float(
-                raw.get("selected_by_percent")
+                raw.get(
+                    "selected_by_percent"
+                )
             ),
         }
 
@@ -1081,9 +1243,13 @@ def build_players(
             fixture_context,
         )
 
-        players.append(projected)
+        players.append(
+            projected
+        )
 
-    df = pd.DataFrame(players)
+    df = pd.DataFrame(
+        players
+    )
 
     if df.empty:
         raise RuntimeError(
@@ -1094,7 +1260,7 @@ def build_players(
 
 
 # ============================================================
-# CURRENT SQUAD / BUDGET
+# WILDCARD BUDGET
 # ============================================================
 
 def get_wildcard_budget(
@@ -1103,10 +1269,12 @@ def get_wildcard_budget(
     players_df,
 ):
     """
-    FPL monetary fields are expressed in £0.1m.
+    FPL monetary fields are in £0.1m.
 
     Prefer entry.value when available.
-    Otherwise calculate squad value from current selling prices.
+
+    Otherwise calculate current squad market value
+    as a fallback.
     """
 
     bank = (
@@ -1115,15 +1283,21 @@ def get_wildcard_budget(
         ) / 10.0
     )
 
-    entry_value_raw = entry.get("value")
+    entry_value_raw = (
+        entry.get("value")
+    )
 
     if (
         entry_value_raw is not None
-        and safe_float(entry_value_raw) > 0
+        and safe_float(
+            entry_value_raw
+        ) > 0
     ):
+
         squad_value = (
-            safe_float(entry_value_raw)
-            / 10.0
+            safe_float(
+                entry_value_raw
+            ) / 10.0
         )
 
         return (
@@ -1131,20 +1305,24 @@ def get_wildcard_budget(
             bank,
         )
 
-    # --------------------------------------------------------
-    # Fallback: current player market prices
-    # --------------------------------------------------------
-
     current_ids = {
-        safe_int(p.get("element"))
-        for p in picks.get("picks", [])
+        safe_int(
+            p.get("element")
+        )
+        for p in picks.get(
+            "picks",
+            [],
+        )
     }
 
     current_players = players_df[
-        players_df["id"].isin(current_ids)
+        players_df["id"].isin(
+            current_ids
+        )
     ]
 
     if not current_players.empty:
+
         squad_value = current_players[
             "Price"
         ].sum()
@@ -1169,11 +1347,32 @@ def find_best_starting_xi(
     captain_id=None,
 ):
     """
-    Optimise legal starting XI across formations.
+    Optimise the legal starting XI across all
+    supported FPL formations.
     """
 
     if squad.empty:
         return None
+
+    # --------------------------------------------------------
+    # DEFENSIVE FIX:
+    #
+    # Some internal optimiser operations use player ID as
+    # the DataFrame index. The rest of the model expects
+    # squad["id"] to exist.
+    #
+    # Restore the index as a normal column if necessary.
+    # --------------------------------------------------------
+
+    if "id" not in squad.columns:
+
+        if squad.index.name == "id":
+
+            squad = squad.reset_index()
+
+        else:
+
+            return None
 
     best = None
 
@@ -1213,7 +1412,11 @@ def find_best_starting_xi(
     ):
         return None
 
-    for def_count, mid_count, fwd_count in FORMATION_OPTIONS:
+    for (
+        def_count,
+        mid_count,
+        fwd_count,
+    ) in FORMATION_OPTIONS:
 
         if len(defs) < def_count:
             continue
@@ -1227,37 +1430,75 @@ def find_best_starting_xi(
         selected = pd.concat(
             [
                 gks.head(1),
-                defs.head(def_count),
-                mids.head(mid_count),
-                fwds.head(fwd_count),
+                defs.head(
+                    def_count
+                ),
+                mids.head(
+                    mid_count
+                ),
+                fwds.head(
+                    fwd_count
+                ),
             ]
         ).copy()
 
+        # ----------------------------------------------------
         # Captain
+        # ----------------------------------------------------
+
         if captain_id is not None:
+
             captain_rows = selected[
-                selected["id"] == captain_id
+                selected["id"]
+                == captain_id
             ]
 
             if not captain_rows.empty:
-                captain = captain_rows.iloc[0]
+
+                captain = (
+                    captain_rows.iloc[0]
+                )
 
             else:
-                captain = selected.sort_values(
+
+                captain = (
+                    selected.sort_values(
+                        "xP",
+                        ascending=False,
+                    ).iloc[0]
+                )
+
+        else:
+
+            captain = (
+                selected.sort_values(
                     "xP",
                     ascending=False,
                 ).iloc[0]
-
-        else:
-            captain = selected.sort_values(
-                "xP",
-                ascending=False,
-            ).iloc[0]
+            )
 
         captain_id_actual = safe_int(
             captain["id"]
         )
 
+        outfield_for_vice = selected[
+            selected["id"]
+            != captain_id_actual
+        ]
+
+        vice = (
+            outfield_for_vice.sort_values(
+                "xP",
+                ascending=False,
+            ).iloc[0]
+        )
+
+        vice_id = safe_int(
+            vice["id"]
+        )
+
+        # Captain gets an additional copy of his
+        # expected points.
         score = (
             selected["xP"].sum()
             + captain["xP"]
@@ -1271,15 +1512,7 @@ def find_best_starting_xi(
             ),
             "xi": selected,
             "captain": captain_id_actual,
-            "vice": safe_int(
-                selected[
-                    selected["id"]
-                    != captain_id_actual
-                ].sort_values(
-                    "xP",
-                    ascending=False,
-                ).iloc[0]["id"]
-            ),
+            "vice": vice_id,
             "score": score,
         }
 
@@ -1288,19 +1521,25 @@ def find_best_starting_xi(
             or result["score"]
             > best["score"]
         ):
+
             best = result
 
     return best
 
 
 # ============================================================
-# FAST WILDCARD CANDIDATES
+# WILDCARD CANDIDATES
 # ============================================================
 
-def wildcard_candidates(players_df):
+def wildcard_candidates(
+    players_df,
+):
     candidates = []
 
-    for position, pool_size in WILDCARD_POOL_PER_POSITION.items():
+    for (
+        position,
+        pool_size,
+    ) in WILDCARD_POOL_PER_POSITION.items():
 
         df = players_df[
             players_df["ElementType"]
@@ -1308,10 +1547,18 @@ def wildcard_candidates(players_df):
         ].copy()
 
         if df.empty:
-            candidates.append(df)
+
+            candidates.append(
+                df
+            )
+
             continue
 
-        # Build a blended ranking rather than selecting solely by xP.
+        # Candidate score blends:
+        # - projected points
+        # - value
+        # - form
+        # - historical output
         df["CandidateScore"] = (
             df["xP"] * 0.65
             + df["Value"] * 4.0 * 0.15
@@ -1326,22 +1573,25 @@ def wildcard_candidates(players_df):
             )
         )
 
-        # Always keep the best xP players.
         top_xp = df.nlargest(
-            min(pool_size, len(df)),
+            min(
+                pool_size,
+                len(df),
+            ),
             "xP",
         )
 
-        # Always keep some value players.
         top_value = df.nlargest(
             min(
-                max(10, pool_size // 3),
+                max(
+                    10,
+                    pool_size // 3,
+                ),
                 len(df),
             ),
             "Value",
         )
 
-        # Combine and deduplicate.
         combined = pd.concat(
             [
                 top_xp,
@@ -1351,15 +1601,20 @@ def wildcard_candidates(players_df):
             subset=["id"]
         )
 
-        combined = combined.sort_values(
-            [
-                "CandidateScore",
-                "xP",
-            ],
-            ascending=False,
-        ).head(pool_size)
+        combined = (
+            combined.sort_values(
+                [
+                    "CandidateScore",
+                    "xP",
+                ],
+                ascending=False,
+            )
+            .head(pool_size)
+        )
 
-        candidates.append(combined)
+        candidates.append(
+            combined
+        )
 
     return candidates
 
@@ -1376,31 +1631,28 @@ def build_position_bundles(
     """
     Incremental beam search.
 
-    This replaces combinations(players, count).
+    Avoids expensive combinations(players, count).
 
-    Example:
+    For example:
         28 choose 5 = 98,280 combinations
 
-    With beam search we keep only the strongest partial
-    combinations at each step.
+    Beam search keeps only the strongest partial states.
     """
 
     if len(position_df) < count:
         return []
 
-    players = position_df.sort_values(
-        [
-            "xP",
-            "Value",
-        ],
-        ascending=False,
-    ).to_dict("records")
+    players = (
+        position_df.sort_values(
+            [
+                "xP",
+                "Value",
+            ],
+            ascending=False,
+        )
+        .to_dict("records")
+    )
 
-    # State:
-    # ids
-    # cost10
-    # score
-    # clubs
     states = [
         {
             "ids": (),
@@ -1418,13 +1670,15 @@ def build_position_bundles(
         for state in states:
 
             start_index = (
-                state["last_index"] + 1
+                state["last_index"]
+                + 1
             )
 
             for idx in range(
                 start_index,
                 len(players),
             ):
+
                 player = players[idx]
 
                 player_id = safe_int(
@@ -1449,7 +1703,10 @@ def build_position_bundles(
                 )
 
                 clubs[team_id] = (
-                    clubs.get(team_id, 0)
+                    clubs.get(
+                        team_id,
+                        0,
+                    )
                     + 1
                 )
 
@@ -1481,17 +1738,18 @@ def build_position_bundles(
             return []
 
         # ----------------------------------------------------
-        # Fast dominance / diversity filtering
+        # Dominance filtering
         # ----------------------------------------------------
 
-        # Keep the strongest state per approximate cost bucket
-        # and club signature.
         best_by_key = {}
 
         for state in new_states:
+
             club_signature = tuple(
                 sorted(
-                    state["clubs"].items()
+                    state[
+                        "clubs"
+                    ].items()
                 )
             )
 
@@ -1504,13 +1762,16 @@ def build_position_bundles(
                 club_signature,
             )
 
-            previous = best_by_key.get(key)
+            previous = (
+                best_by_key.get(key)
+            )
 
             if (
                 previous is None
                 or state["score"]
                 > previous["score"]
             ):
+
                 best_by_key[key] = state
 
         states = sorted(
@@ -1533,7 +1794,7 @@ def build_position_bundles(
 
 
 # ============================================================
-# WILDCARD SQUAD OPTIMISER
+# WILDCARD OPTIMISER
 # ============================================================
 
 def optimise_wildcard(
@@ -1545,16 +1806,22 @@ def optimise_wildcard(
         flush=True,
     )
 
-    candidate_frames = wildcard_candidates(
-        players_df
+    candidate_frames = (
+        wildcard_candidates(
+            players_df
+        )
     )
 
     by_position = {}
 
-    for position, df in zip(
+    for (
+        position,
+        df,
+    ) in zip(
         [1, 2, 3, 4],
         candidate_frames,
     ):
+
         by_position[position] = df
 
         print(
@@ -1576,7 +1843,10 @@ def optimise_wildcard(
 
     bundles = {}
 
-    for position, count in required.items():
+    for (
+        position,
+        count,
+    ) in required.items():
 
         print(
             f"Building position {position} "
@@ -1593,19 +1863,22 @@ def optimise_wildcard(
         )
 
         print(
-            f"  -> {len(bundles[position])} "
+            f"  -> "
+            f"{len(bundles[position])} "
             f"bundles",
             flush=True,
         )
 
         if not bundles[position]:
+
             raise RuntimeError(
                 f"Unable to build enough "
-                f"players for position {position}."
+                f"players for position "
+                f"{position}."
             )
 
     # --------------------------------------------------------
-    # Combine bundles using a beam
+    # Combine position bundles
     # --------------------------------------------------------
 
     states = [
@@ -1616,6 +1889,10 @@ def optimise_wildcard(
             "clubs": {},
         }
     ]
+
+    budget10 = round(
+        budget * 10
+    )
 
     for position in [
         1,
@@ -1637,7 +1914,7 @@ def optimise_wildcard(
 
                 if (
                     new_cost10
-                    > round(budget * 10)
+                    > budget10
                 ):
                     continue
 
@@ -1647,12 +1924,18 @@ def optimise_wildcard(
 
                 valid = True
 
-                for club_id, count in bundle[
+                for (
+                    club_id,
+                    count,
+                ) in bundle[
                     "clubs"
                 ].items():
 
                     clubs[club_id] = (
-                        clubs.get(club_id, 0)
+                        clubs.get(
+                            club_id,
+                            0,
+                        )
                         + count
                     )
 
@@ -1660,6 +1943,7 @@ def optimise_wildcard(
                         clubs[club_id]
                         > MAX_CLUB_PLAYERS
                     ):
+
                         valid = False
                         break
 
@@ -1684,13 +1968,14 @@ def optimise_wildcard(
                 )
 
         if not next_states:
+
             raise RuntimeError(
                 "Wildcard optimiser found "
                 "no budget-feasible squad."
             )
 
         # ----------------------------------------------------
-        # Deduplicate by squad size / cost / club structure
+        # Deduplicate / beam
         # ----------------------------------------------------
 
         best_by_key = {}
@@ -1703,7 +1988,9 @@ def optimise_wildcard(
 
             club_signature = tuple(
                 sorted(
-                    state["clubs"].items()
+                    state[
+                        "clubs"
+                    ].items()
                 )
             )
 
@@ -1712,13 +1999,16 @@ def optimise_wildcard(
                 club_signature,
             )
 
-            old = best_by_key.get(key)
+            old = (
+                best_by_key.get(key)
+            )
 
             if (
                 old is None
                 or state["score"]
                 > old["score"]
             ):
+
                 best_by_key[key] = state
 
         states = sorted(
@@ -1738,7 +2028,8 @@ def optimise_wildcard(
         )[:WILDCARD_SQUAD_BEAM]
 
         print(
-            f"After position {position}: "
+            f"After position "
+            f"{position}: "
             f"{len(states)} squad states",
             flush=True,
         )
@@ -1752,6 +2043,15 @@ def optimise_wildcard(
         flush=True,
     )
 
+    # IMPORTANT:
+    # We deliberately create a normal DataFrame lookup.
+    # The previous version set id as the index and then passed
+    # the resulting DataFrame to functions expecting an "id"
+    # column. That caused:
+    #
+    # KeyError: 'id'
+    #
+    # We now reset_index() immediately after selecting.
     player_lookup = (
         players_df.set_index("id")
     )
@@ -1762,28 +2062,50 @@ def optimise_wildcard(
         :FINAL_EVALUATIONS
     ]:
 
-        ids = list(state["ids"])
+        ids = list(
+            state["ids"]
+        )
 
         try:
+
             squad = player_lookup.loc[
                 ids
             ].copy()
+
+            # ------------------------------------------------
+            # CRITICAL FIX
+            # ------------------------------------------------
+            # Restore id as a normal column.
+            # ------------------------------------------------
+
+            squad = squad.reset_index()
+
         except Exception:
+
             continue
 
         if len(squad) != 15:
             continue
 
-        cost = (
+        # ----------------------------------------------------
+        # Budget
+        # ----------------------------------------------------
+
+        cost = safe_float(
             squad["Price"].sum()
         )
 
         if cost > budget + 1e-9:
             continue
 
-        # Ensure exact squad composition.
+        # ----------------------------------------------------
+        # Exact squad composition
+        # ----------------------------------------------------
+
         counts = (
-            squad["ElementType"]
+            squad[
+                "ElementType"
+            ]
             .value_counts()
             .to_dict()
         )
@@ -1800,7 +2122,10 @@ def optimise_wildcard(
         if counts.get(4, 0) != 3:
             continue
 
-        # Club limit.
+        # ----------------------------------------------------
+        # Club limit
+        # ----------------------------------------------------
+
         if (
             squad["Team"]
             .value_counts()
@@ -1809,15 +2134,23 @@ def optimise_wildcard(
         ):
             continue
 
-        starting = find_best_starting_xi(
-            squad
+        # ----------------------------------------------------
+        # Starting XI
+        # ----------------------------------------------------
+
+        starting = (
+            find_best_starting_xi(
+                squad
+            )
         )
 
         if starting is None:
             continue
 
-        # We optimise actual XI + captain,
-        # not merely total squad xP.
+        # ----------------------------------------------------
+        # Final score
+        # ----------------------------------------------------
+
         final_score = (
             starting["score"]
             + 0.04
@@ -1831,6 +2164,7 @@ def optimise_wildcard(
             or final_score
             > best["score"]
         ):
+
             best = {
                 "squad": squad,
                 "starting": starting,
@@ -1839,6 +2173,7 @@ def optimise_wildcard(
             }
 
     if best is None:
+
         raise RuntimeError(
             "Wildcard optimiser could not "
             "produce a legal squad."
@@ -1848,7 +2183,7 @@ def optimise_wildcard(
 
 
 # ============================================================
-# NORMAL TRANSFER OPTIMISER
+# NORMAL MODE / ONE-TRANSFER OPTIMISER
 # ============================================================
 
 def optimise_existing_team(
@@ -1859,7 +2194,7 @@ def optimise_existing_team(
     """
     Conservative one-transfer optimiser.
 
-    Used only when Wildcard mode is disabled.
+    Used when Wildcard mode is disabled.
     """
 
     current = players_df[
@@ -1869,22 +2204,27 @@ def optimise_existing_team(
     ].copy()
 
     if current.empty:
+
         raise RuntimeError(
             "Could not reconstruct current squad."
         )
 
-    starting = find_best_starting_xi(
-        current
+    starting = (
+        find_best_starting_xi(
+            current
+        )
     )
 
     if starting is None:
+
         raise RuntimeError(
-            "Current squad cannot form a legal XI."
+            "Current squad cannot form "
+            "a legal XI."
         )
 
-    current_score = starting[
-        "score"
-    ]
+    current_score = (
+        starting["score"]
+    )
 
     best = {
         "squad": current,
@@ -1907,7 +2247,9 @@ def optimise_existing_team(
         if out_row.empty:
             continue
 
-        out_player = out_row.iloc[0]
+        out_player = (
+            out_row.iloc[0]
+        )
 
         available_budget = (
             bank
@@ -1924,7 +2266,9 @@ def optimise_existing_team(
             )
             & (
                 players_df["ElementType"]
-                == out_player["ElementType"]
+                == out_player[
+                    "ElementType"
+                ]
             )
             & (
                 players_df["Price"]
@@ -1937,10 +2281,13 @@ def optimise_existing_team(
             "xP",
         )
 
-        for _, new_player in candidates.iterrows():
+        for _, new_player in (
+            candidates.iterrows()
+        ):
 
             test = current[
-                current["id"] != out_id
+                current["id"]
+                != out_id
             ].copy()
 
             test = pd.concat(
@@ -1973,15 +2320,18 @@ def optimise_existing_team(
             if starting_test is None:
                 continue
 
-            score = starting_test[
-                "score"
-            ]
+            score = (
+                starting_test["score"]
+            )
 
             if score > best["score"]:
+
                 best = {
                     "squad": test,
                     "starting": starting_test,
-                    "cost": test["Price"].sum(),
+                    "cost": test[
+                        "Price"
+                    ].sum(),
                     "score": score,
                     "transfer": {
                         "out": out_player,
@@ -2018,19 +2368,28 @@ def build_report(
     budget,
     bank,
 ):
-    starting = result["starting"]
-    squad = result["squad"]
+    starting = result[
+        "starting"
+    ]
+
+    squad = result[
+        "squad"
+    ]
 
     formation = starting[
         "formation"
     ]
 
-    def_count, mid_count, fwd_count = (
-        formation
-    )
+    (
+        def_count,
+        mid_count,
+        fwd_count,
+    ) = formation
 
     formation_text = (
-        f"{def_count}-{mid_count}-{fwd_count}"
+        f"{def_count}-"
+        f"{mid_count}-"
+        f"{fwd_count}"
     )
 
     lines = []
@@ -2046,6 +2405,7 @@ def build_report(
     lines.append("")
 
     if FPL_WILDCARD_THIS_WEEK:
+
         lines.append(
             "🃏 WILDCARD ACTIVE"
         )
@@ -2056,16 +2416,20 @@ def build_report(
         )
 
         lines.append(
-            f"Bank: {format_price(bank)}"
+            f"Bank: "
+            f"{format_price(bank)}"
         )
 
         lines.append("")
 
     lines.append(
-        f"STARTING XI ({formation_text})"
+        f"STARTING XI "
+        f"({formation_text})"
     )
 
-    xi = starting["xi"].copy()
+    xi = starting[
+        "xi"
+    ].copy()
 
     captain_id = starting[
         "captain"
@@ -2079,10 +2443,16 @@ def build_report(
 
         captain_marker = ""
 
-        if safe_int(player["id"]) == captain_id:
+        player_id = safe_int(
+            player["id"]
+        )
+
+        if player_id == captain_id:
+
             captain_marker = " ©"
 
-        elif safe_int(player["id"]) == vice_id:
+        elif player_id == vice_id:
+
             captain_marker = " (V)"
 
         lines.append(
@@ -2094,23 +2464,55 @@ def build_report(
             f"{captain_marker}"
         )
 
-    captain_row = xi[
+    captain_rows = xi[
         xi["id"] == captain_id
-    ].iloc[0]
+    ]
 
-    vice_row = xi[
+    vice_rows = xi[
         xi["id"] == vice_id
-    ].iloc[0]
+    ]
+
+    if captain_rows.empty:
+
+        captain_row = (
+            xi.sort_values(
+                "xP",
+                ascending=False,
+            ).iloc[0]
+        )
+
+    else:
+
+        captain_row = (
+            captain_rows.iloc[0]
+        )
+
+    if vice_rows.empty:
+
+        vice_row = (
+            xi.sort_values(
+                "xP",
+                ascending=False,
+            ).iloc[1]
+        )
+
+    else:
+
+        vice_row = (
+            vice_rows.iloc[0]
+        )
 
     lines.append("")
 
     lines.append(
-        f"Captain: {captain_row['Name']} "
+        f"Captain: "
+        f"{captain_row['Name']} "
         f"({captain_row['xP']:.2f} xP)"
     )
 
     lines.append(
-        f"Vice: {vice_row['Name']} "
+        f"Vice: "
+        f"{vice_row['Name']} "
         f"({vice_row['xP']:.2f} xP)"
     )
 
@@ -2124,13 +2526,13 @@ def build_report(
     )
 
     bench = squad[
-        ~squad["id"].isin(xi_ids)
+        ~squad["id"].isin(
+            xi_ids
+        )
     ].copy()
 
-    # Put GK first, then highest xP.
     bench["BenchOrder"] = (
-        bench["ElementType"]
-        .map(
+        bench["ElementType"].map(
             {
                 1: 0,
                 2: 1,
@@ -2154,7 +2556,9 @@ def build_report(
     lines.append("")
     lines.append("BENCH")
 
-    for _, player in bench.iterrows():
+    for _, player in (
+        bench.iterrows()
+    ):
 
         lines.append(
             f"• {player['Name']} "
@@ -2190,17 +2594,24 @@ def build_report(
     )
 
     # --------------------------------------------------------
-    # Transfer info
+    # Transfer information
     # --------------------------------------------------------
 
-    if result.get("transfer"):
+    if result.get(
+        "transfer"
+    ):
 
         transfer = result[
             "transfer"
         ]
 
-        out_player = transfer["out"]
-        in_player = transfer["in"]
+        out_player = transfer[
+            "out"
+        ]
+
+        in_player = transfer[
+            "in"
+        ]
 
         lines.append("")
 
@@ -2209,32 +2620,41 @@ def build_report(
         )
 
         lines.append(
-            f"OUT: {out_player['Name']} "
+            f"OUT: "
+            f"{out_player['Name']} "
             f"{format_price(out_player['Price'])}"
         )
 
         lines.append(
-            f"IN: {in_player['Name']} "
+            f"IN: "
+            f"{in_player['Name']} "
             f"{format_price(in_player['Price'])}"
         )
 
     lines.append("")
-    lines.append("Model notes:")
+    lines.append(
+        "Model notes:"
+    )
+
     lines.append(
         "• Tiny xG/xA samples are Bayesian-shrunk."
     )
+
     lines.append(
         "• Historical FPL points act as a weak stabiliser."
     )
+
     lines.append(
         "• Minutes model uses starts, appearances, "
         "minutes, form and availability."
     )
+
     lines.append(
         "• Starting XI is optimised across legal formations."
     )
 
     if FPL_WILDCARD_THIS_WEEK:
+
         lines.append(
             "• Wildcard optimises the full 15-man squad."
         )
@@ -2247,25 +2667,31 @@ def build_report(
 # ============================================================
 
 def send_telegram(message):
+
     if not TELEGRAM_BOT_TOKEN:
+
         print(
             "TELEGRAM_BOT_TOKEN not configured; "
             "skipping Telegram.",
             flush=True,
         )
+
         return
 
     if not TELEGRAM_CHAT_ID:
+
         print(
             "TELEGRAM_CHAT_ID not configured; "
             "skipping Telegram.",
             flush=True,
         )
+
         return
 
     url = (
-        f"https://api.telegram.org/bot"
-        f"{TELEGRAM_BOT_TOKEN}/sendMessage"
+        "https://api.telegram.org/bot"
+        f"{TELEGRAM_BOT_TOKEN}"
+        "/sendMessage"
     )
 
     payload = {
@@ -2292,6 +2718,7 @@ def send_telegram(message):
 # ============================================================
 
 def main():
+
     print(
         f"Starting FPL Weekly Manager "
         f"{MODEL_VERSION}",
@@ -2299,26 +2726,40 @@ def main():
     )
 
     if not TEAM_ID:
+
         raise RuntimeError(
-            "TEAM_ID / FPL_TEAM_ID is not configured."
+            "TEAM_ID / FPL_TEAM_ID "
+            "is not configured."
         )
 
-    bootstrap = fetch_bootstrap()
+    # --------------------------------------------------------
+    # API
+    # --------------------------------------------------------
 
-    fixtures = fetch_fixtures()
+    bootstrap = (
+        fetch_bootstrap()
+    )
+
+    fixtures = (
+        fetch_fixtures()
+    )
 
     events = bootstrap.get(
         "events",
         [],
     )
 
-    target_gw = determine_target_gameweek(
-        events
+    target_gw = (
+        determine_target_gameweek(
+            events
+        )
     )
 
     if not target_gw:
+
         raise RuntimeError(
-            "Could not determine target gameweek."
+            "Could not determine "
+            "target gameweek."
         )
 
     print(
@@ -2326,8 +2767,10 @@ def main():
         flush=True,
     )
 
-    current_team = fetch_current_team(
-        TEAM_ID
+    current_team = (
+        fetch_current_team(
+            TEAM_ID
+        )
     )
 
     entry = current_team[
@@ -2337,6 +2780,10 @@ def main():
     picks = current_team[
         "picks"
     ]
+
+    # --------------------------------------------------------
+    # Player projections
+    # --------------------------------------------------------
 
     print(
         "Building player projections...",
@@ -2361,10 +2808,12 @@ def main():
 
     if FPL_WILDCARD_THIS_WEEK:
 
-        budget, bank = get_wildcard_budget(
-            entry,
-            picks,
-            players_df,
+        budget, bank = (
+            get_wildcard_budget(
+                entry,
+                picks,
+                players_df,
+            )
         )
 
         print(
@@ -2379,9 +2828,11 @@ def main():
             flush=True,
         )
 
-        result = optimise_wildcard(
-            players_df,
-            budget,
+        result = (
+            optimise_wildcard(
+                players_df,
+                budget,
+            )
         )
 
     # --------------------------------------------------------
@@ -2403,48 +2854,57 @@ def main():
         bank = (
             safe_float(
                 entry.get("bank")
-            )
-            / 10.0
+            ) / 10.0
         )
 
-        result = optimise_existing_team(
-            current_ids,
-            players_df,
-            bank,
+        result = (
+            optimise_existing_team(
+                current_ids,
+                players_df,
+                bank,
+            )
         )
 
     # --------------------------------------------------------
     # Report
     # --------------------------------------------------------
 
+    if FPL_WILDCARD_THIS_WEEK:
+
+        report_budget, report_bank = (
+            get_wildcard_budget(
+                entry,
+                picks,
+                players_df,
+            )
+        )
+
+    else:
+
+        report_budget = result[
+            "cost"
+        ]
+
+        report_bank = bank
+
     report = build_report(
         target_gw,
         result,
-        (
-            get_wildcard_budget(
-                entry,
-                picks,
-                players_df,
-            )[0]
-            if FPL_WILDCARD_THIS_WEEK
-            else result["cost"]
-        ),
-        (
-            get_wildcard_budget(
-                entry,
-                picks,
-                players_df,
-            )[1]
-            if FPL_WILDCARD_THIS_WEEK
-            else bank
-        ),
+        report_budget,
+        report_bank,
     )
 
     print("")
     print(report)
     print("")
 
-    send_telegram(report)
+    # --------------------------------------------------------
+    # Telegram
+    # --------------------------------------------------------
+
+    send_telegram(
+        report
+    )
 
     print(
         "FPL Weekly Manager completed successfully.",
@@ -2452,17 +2912,26 @@ def main():
     )
 
 
+# ============================================================
+# ENTRY POINT
+# ============================================================
+
 if __name__ == "__main__":
+
     try:
+
         main()
 
     except Exception as exc:
+
         print(
             "Critical Error encountered:",
             flush=True,
         )
+
         print(
             str(exc),
             flush=True,
         )
+
         raise
