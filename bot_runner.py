@@ -17,9 +17,6 @@ load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8914224822:AAGqUiZI4B5Ho9S5BJR2X0g3HWcgnfskmJc")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "365578933")
 
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
 TEAM_ID = int(os.environ.get("FPL_TEAM_ID", "4701153"))
 
 FPL_BANK_OVERRIDE = os.environ.get("FPL_BANK_MILLIONS")
