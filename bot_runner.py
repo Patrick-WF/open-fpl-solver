@@ -2367,6 +2367,7 @@ def build_report(
     result,
     budget,
     bank,
+    used_chips,
 ):
     starting = result[
         "starting"
@@ -2517,7 +2518,7 @@ def build_report(
     )
 
     # --------------------------------------------------------
-    # Bench
+    # Bench & Chip Tracking Logic
     # --------------------------------------------------------
 
     xi_ids = set(
@@ -2530,6 +2531,23 @@ def build_report(
             xi_ids
         )
     ].copy()
+    
+    bench_xp = safe_float(bench["xP"].sum())
+    captain_xp = safe_float(captain_row["xP"])
+    
+    chip_advice = "Hold Chips 🛡️ (Save Free Hit / Wildcards)"
+    if FPL_WILDCARD_THIS_WEEK:
+        chip_advice = "Wildcard Active 🃏"
+    elif captain_xp >= 11.5 and "3xc" not in used_chips:
+        chip_advice = "Triple Captain Recommended 🚀"
+    elif bench_xp >= 22.0 and "bboost" not in used_chips:
+        chip_advice = "Bench Boost Recommended 📈"
+    elif "3xc" in used_chips and captain_xp >= 11.5:
+        chip_advice = "Hold Chips 🛡️ (Triple Captain already used)"
+    elif "bboost" in used_chips and bench_xp >= 22.0:
+        chip_advice = "Hold Chips 🛡️ (Bench Boost already used)"
+
+    lines.append(f"🎯 Chip Strategy: {chip_advice}")
 
     bench["BenchOrder"] = (
         bench["ElementType"].map(
@@ -2780,6 +2798,14 @@ def main():
     picks = current_team[
         "picks"
     ]
+    
+    history = current_team[
+        "history"
+    ]
+    
+    used_chips = set()
+    for chip in history.get("chips", []):
+        used_chips.add(chip.get("name"))
 
     # --------------------------------------------------------
     # Player projections
@@ -2892,6 +2918,7 @@ def main():
         result,
         report_budget,
         report_bank,
+        used_chips,
     )
 
     print("")
