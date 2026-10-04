@@ -23,7 +23,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 FPL_WILDCARD_THIS_WEEK = (
-    os.getenv("FPL_WILDCARD_THIS_WEEK", "true").lower()
+    os.getenv("FPL_WILDCARD_THIS_WEEK", "false").lower()
     in {"1", "true", "yes", "y", "on"}
 )
 
